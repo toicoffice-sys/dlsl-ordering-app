@@ -116,39 +116,39 @@ const App = (() => {
   function renderLoginStep1(error) {
     const right = document.getElementById('login-right');
     right.innerHTML = `
-      <div style="margin-bottom:32px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
-          <div style="width:44px;height:44px;background:var(--g900);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--gold);">D</div>
-          <div style="font-size:18px;font-weight:800;color:var(--g900);">DLSL <span style="color:var(--g700);">Order</span></div>
+      <div style="max-width:360px;width:100%;margin:0 auto;">
+        <!-- Logo mark -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:40px;">
+          <div style="width:42px;height:42px;background:var(--g900);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--gold);box-shadow:0 4px 12px rgba(27,94,32,.3);">D</div>
+          <div style="font-size:17px;font-weight:800;color:var(--text);">DLSL <span style="color:var(--g700);">Order</span></div>
         </div>
-        <h1 style="font-size:28px;font-weight:900;color:var(--text);margin-bottom:6px;line-height:1.2;">Welcome back 👋</h1>
-        <p style="color:var(--text2);font-size:15px;">Sign in with your DLSL email address.</p>
-      </div>
-      ${error ? `<div class="alert alert-danger">⚠ ${error}</div>` : ''}
-      <div class="form-group">
-        <label class="form-label">Email Address</label>
-        <input type="email" class="form-control" id="login-email" placeholder="your.name@dlsl.edu.ph" autocomplete="email" style="font-size:15px;padding:13px 16px;">
-      </div>
-      <button class="btn btn-primary btn-block" id="login-submit-btn" onclick="App.submitEmail()" style="padding:14px;font-size:15px;border-radius:10px;">
-        Continue →
-      </button>
-      <div style="display:flex;gap:16px;margin-top:24px;">
-        <div style="flex:1;background:var(--g50);border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:22px;margin-bottom:4px;">🛒</div>
-          <div style="font-size:11px;color:var(--text2);font-weight:600;">Easy Ordering</div>
+
+        <h1 style="font-size:30px;font-weight:900;color:var(--text);margin-bottom:6px;line-height:1.15;">Sign in</h1>
+        <p style="color:var(--text2);font-size:15px;margin-bottom:28px;">Enter your DLSL email to continue.</p>
+
+        ${error ? `<div class="alert alert-danger" style="margin-bottom:20px;">⚠ ${error}</div>` : ''}
+
+        <div class="form-group">
+          <label class="form-label" style="font-size:13px;">Email address</label>
+          <input type="email" class="form-control" id="login-email"
+            placeholder="yourname@dlsl.edu.ph"
+            autocomplete="email"
+            style="padding:14px 16px;font-size:15px;border-radius:10px;">
         </div>
-        <div style="flex:1;background:var(--g50);border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:22px;margin-bottom:4px;">📦</div>
-          <div style="font-size:11px;color:var(--text2);font-weight:600;">Track Orders</div>
+
+        <button class="btn btn-primary btn-block" id="login-submit-btn"
+          onclick="App.submitEmail()"
+          style="padding:15px;font-size:15px;border-radius:10px;margin-bottom:24px;justify-content:center;">
+          Continue &nbsp;→
+        </button>
+
+        <div style="border-top:1px solid var(--border);padding-top:24px;">
+          <p style="font-size:13px;color:var(--text3);text-align:center;line-height:1.6;">
+            Don't have an account?<br>
+            <span style="color:var(--g700);font-weight:600;">Contact RESGO</span> to register.
+          </p>
         </div>
-        <div style="flex:1;background:var(--g50);border-radius:10px;padding:14px;text-align:center;">
-          <div style="font-size:22px;margin-bottom:4px;">⭐</div>
-          <div style="font-size:11px;color:var(--text2);font-weight:600;">Rate Stalls</div>
-        </div>
-      </div>
-      <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;">
-        Not registered? Contact RESGO to create your account.
-      </p>`;
+      </div>`;
     document.getElementById('login-email')?.focus();
   }
 
@@ -173,25 +173,47 @@ const App = (() => {
   function renderLoginStep2(email, name, error) {
     const right = document.getElementById('login-right');
     right.innerHTML = `
-      <div style="margin-bottom:28px;">
-        <button onclick="App.renderLoginStep1()" style="background:none;border:none;color:var(--g700);font-weight:600;font-size:13px;cursor:pointer;padding:0;margin-bottom:20px;display:flex;align-items:center;gap:4px;">← Back</button>
-        <h1 style="font-size:28px;font-weight:900;color:var(--text);margin-bottom:8px;">Check your email 📬</h1>
-        <p style="color:var(--text2);font-size:14px;line-height:1.6;">
-          Hi <strong>${name}</strong>! We sent a 6-digit code to<br>
-          <span style="color:var(--g800);font-weight:600;">${email}</span>
+      <div style="max-width:360px;width:100%;margin:0 auto;">
+        <!-- Logo mark -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:40px;">
+          <div style="width:42px;height:42px;background:var(--g900);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--gold);box-shadow:0 4px 12px rgba(27,94,32,.3);">D</div>
+          <div style="font-size:17px;font-weight:800;color:var(--text);">DLSL <span style="color:var(--g700);">Order</span></div>
+        </div>
+
+        <button onclick="App.renderLoginStep1()" style="background:none;border:none;color:var(--text3);font-weight:600;font-size:13px;cursor:pointer;padding:0;margin-bottom:24px;display:flex;align-items:center;gap:6px;font-family:var(--font);">
+          ← Back
+        </button>
+
+        <h1 style="font-size:30px;font-weight:900;color:var(--text);margin-bottom:8px;line-height:1.15;">Enter the code</h1>
+        <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-bottom:6px;">
+          We sent a 6-digit code to
         </p>
-      </div>
-      ${error ? `<div class="alert alert-danger">⚠ ${error}</div>` : ''}
-      <div class="otp-group" id="otp-group">
-        ${Array.from({length:6}, (_,i) => `<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
-      </div>
-      <button class="btn btn-primary btn-block" id="otp-submit-btn" onclick="App.submitOTP('${email}')" style="padding:14px;font-size:15px;border-radius:10px;">
-        Verify & Sign In
-      </button>
-      <div style="text-align:center;margin-top:16px;display:flex;gap:8px;justify-content:center;">
-        <button class="btn btn-ghost btn-sm" id="resend-btn" onclick="App.resendOTP('${email}','${name}')">Resend code</button>
-      </div>
-      <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:16px;">Code expires in 10 minutes. Do not share with anyone.</p>`;
+        <p style="font-weight:700;font-size:15px;color:var(--g800);margin-bottom:24px;">${email}</p>
+
+        ${error ? `<div class="alert alert-danger" style="margin-bottom:16px;">⚠ ${error}</div>` : ''}
+
+        <div class="otp-group" id="otp-group">
+          ${Array.from({length:6}, (_,i) => `<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
+        </div>
+
+        <button class="btn btn-primary btn-block" id="otp-submit-btn"
+          onclick="App.submitOTP('${email}')"
+          style="padding:15px;font-size:15px;border-radius:10px;margin-bottom:16px;justify-content:center;">
+          Verify &amp; Sign In
+        </button>
+
+        <div style="text-align:center;">
+          <button class="btn btn-ghost btn-sm" id="resend-btn"
+            onclick="App.resendOTP('${email}','${name}')"
+            style="font-size:13px;">
+            Didn't receive it? Resend code
+          </button>
+        </div>
+
+        <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;line-height:1.6;">
+          Code expires in 10 minutes.<br>Never share this code with anyone.
+        </p>
+      </div>`;
     setupOTPInputs();
   }
 
