@@ -165,19 +165,23 @@ const App = (() => {
     if (!email) { toast('Please enter your email.','error'); return; }
 
     const errBox = document.getElementById('login-error-box');
-    errBox.innerHTML = '';
+    if (errBox) errBox.innerHTML = '';
 
     const btn = document.getElementById('login-submit-btn');
-    setLoading(btn, true);
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; btn.style.opacity = '.8'; }
     try {
       const res = await call('requestAccess', email);
       if (res.success) {
         showOTPStep(email, res.name);
       } else {
-        errBox.innerHTML = `<div class="lf-error">${res.error}</div>`;
+        if (errBox) errBox.innerHTML = `<div class="lf-error">${res.error}</div>`;
       }
-    } catch { errBox.innerHTML = `<div class="lf-error">Connection error. Please try again.</div>`; }
-    finally { setLoading(btn, false); }
+    } catch (e) {
+      if (errBox) errBox.innerHTML = `<div class="lf-error">Connection error. Please try again.</div>`;
+    }
+    finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Continue →'; btn.style.opacity = ''; }
+    }
   }
 
   async function doVerifyOTP() {
@@ -1461,5 +1465,11 @@ const App = (() => {
   };
 })();
 
-document.addEventListener('DOMContentLoaded', App.init);
+// GAS HtmlService inlines scripts after the DOM is built, so DOMContentLoaded
+// may have already fired. Use readyState check to handle both cases.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', App.init);
+} else {
+  App.init();
+}
 </script>
