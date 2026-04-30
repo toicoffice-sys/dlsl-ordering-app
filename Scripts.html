@@ -1473,20 +1473,19 @@ var App = (() => {
 // IIFE scope — no global/window lookup needed, works in GAS sandbox.
 (function() {
   function wireLoginForms() {
-    var emailForm = document.getElementById('email-form');
-    if (emailForm) {
-      emailForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        App.submitEmail();
-      });
+    var submitBtn = document.getElementById('login-submit-btn');
+    if (submitBtn) {
+      submitBtn.addEventListener('click', function() { App.submitEmail(); });
     }
 
-    var otpForm = document.getElementById('otp-form');
-    if (otpForm) {
-      otpForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        App.doVerifyOTP();
-      });
+    var emailInput = document.getElementById('login-email');
+    if (emailInput) {
+      emailInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') App.submitEmail(); });
+    }
+
+    var otpBtn = document.getElementById('otp-submit-btn');
+    if (otpBtn) {
+      otpBtn.addEventListener('click', function() { App.doVerifyOTP(); });
     }
 
     var backBtn = document.getElementById('otp-back-btn');
