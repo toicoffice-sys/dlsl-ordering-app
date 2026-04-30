@@ -1471,6 +1471,12 @@ var App = (() => {
 
 window.App = App;
 
+// Expose login functions globally so onclick="submitEmail()" works in GAS sandbox
+window.submitEmail  = function() { App.submitEmail(); };
+window.showEmailStep = function() { App.showEmailStep(); };
+window.doVerifyOTP  = function() { App.doVerifyOTP(); };
+window.doResendOTP  = function() { App.doResendOTP(); };
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', App.init);
 } else {
