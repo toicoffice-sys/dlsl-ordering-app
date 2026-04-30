@@ -116,14 +116,36 @@ const App = (() => {
   function renderLoginStep1(error) {
     const right = document.getElementById('login-right');
     right.innerHTML = `
-      <h1 style="font-size:26px;font-weight:800;color:var(--g900);margin-bottom:6px;">Sign In</h1>
-      <p style="color:var(--text2);margin-bottom:28px;font-size:14px;">Use your DLSL email to continue.</p>
-      ${error ? `<div class="alert alert-danger">${error}</div>` : ''}
+      <div style="margin-bottom:32px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+          <div style="width:44px;height:44px;background:var(--g900);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--gold);">D</div>
+          <div style="font-size:18px;font-weight:800;color:var(--g900);">DLSL <span style="color:var(--g700);">Order</span></div>
+        </div>
+        <h1 style="font-size:28px;font-weight:900;color:var(--text);margin-bottom:6px;line-height:1.2;">Welcome back 👋</h1>
+        <p style="color:var(--text2);font-size:15px;">Sign in with your DLSL email address.</p>
+      </div>
+      ${error ? `<div class="alert alert-danger">⚠ ${error}</div>` : ''}
       <div class="form-group">
         <label class="form-label">Email Address</label>
-        <input type="email" class="form-control" id="login-email" placeholder="your.name@dlsl.edu.ph" autocomplete="email">
+        <input type="email" class="form-control" id="login-email" placeholder="your.name@dlsl.edu.ph" autocomplete="email" style="font-size:15px;padding:13px 16px;">
       </div>
-      <button class="btn btn-primary btn-block" id="login-submit-btn" onclick="App.submitEmail()">Continue</button>
+      <button class="btn btn-primary btn-block" id="login-submit-btn" onclick="App.submitEmail()" style="padding:14px;font-size:15px;border-radius:10px;">
+        Continue →
+      </button>
+      <div style="display:flex;gap:16px;margin-top:24px;">
+        <div style="flex:1;background:var(--g50);border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:22px;margin-bottom:4px;">🛒</div>
+          <div style="font-size:11px;color:var(--text2);font-weight:600;">Easy Ordering</div>
+        </div>
+        <div style="flex:1;background:var(--g50);border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:22px;margin-bottom:4px;">📦</div>
+          <div style="font-size:11px;color:var(--text2);font-weight:600;">Track Orders</div>
+        </div>
+        <div style="flex:1;background:var(--g50);border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:22px;margin-bottom:4px;">⭐</div>
+          <div style="font-size:11px;color:var(--text2);font-weight:600;">Rate Stalls</div>
+        </div>
+      </div>
       <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;">
         Not registered? Contact RESGO to create your account.
       </p>`;
@@ -151,18 +173,25 @@ const App = (() => {
   function renderLoginStep2(email, name, error) {
     const right = document.getElementById('login-right');
     right.innerHTML = `
-      <h1 style="font-size:26px;font-weight:800;color:var(--g900);margin-bottom:6px;">Enter OTP</h1>
-      <p style="color:var(--text2);margin-bottom:4px;font-size:14px;">Hello, <strong>${name}</strong>! A 6-digit code was sent to:</p>
-      <p style="font-weight:600;font-size:14px;color:var(--g800);margin-bottom:24px;">${email}</p>
-      ${error ? `<div class="alert alert-danger">${error}</div>` : ''}
+      <div style="margin-bottom:28px;">
+        <button onclick="App.renderLoginStep1()" style="background:none;border:none;color:var(--g700);font-weight:600;font-size:13px;cursor:pointer;padding:0;margin-bottom:20px;display:flex;align-items:center;gap:4px;">← Back</button>
+        <h1 style="font-size:28px;font-weight:900;color:var(--text);margin-bottom:8px;">Check your email 📬</h1>
+        <p style="color:var(--text2);font-size:14px;line-height:1.6;">
+          Hi <strong>${name}</strong>! We sent a 6-digit code to<br>
+          <span style="color:var(--g800);font-weight:600;">${email}</span>
+        </p>
+      </div>
+      ${error ? `<div class="alert alert-danger">⚠ ${error}</div>` : ''}
       <div class="otp-group" id="otp-group">
         ${Array.from({length:6}, (_,i) => `<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
       </div>
-      <button class="btn btn-primary btn-block" id="otp-submit-btn" onclick="App.submitOTP('${email}')">Verify</button>
-      <div style="text-align:center;margin-top:16px;">
-        <button class="btn btn-ghost btn-sm" id="resend-btn" onclick="App.resendOTP('${email}','${name}')">Resend OTP</button>
-        <button class="btn btn-ghost btn-sm" onclick="App.renderLoginStep1()">← Change email</button>
-      </div>`;
+      <button class="btn btn-primary btn-block" id="otp-submit-btn" onclick="App.submitOTP('${email}')" style="padding:14px;font-size:15px;border-radius:10px;">
+        Verify & Sign In
+      </button>
+      <div style="text-align:center;margin-top:16px;display:flex;gap:8px;justify-content:center;">
+        <button class="btn btn-ghost btn-sm" id="resend-btn" onclick="App.resendOTP('${email}','${name}')">Resend code</button>
+      </div>
+      <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:16px;">Code expires in 10 minutes. Do not share with anyone.</p>`;
     setupOTPInputs();
   }
 
@@ -298,36 +327,59 @@ const App = (() => {
   function renderCustomerHome() {
     showPage('main');
     const el = document.getElementById('main-content');
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    const name = (state.user?.name || '').split(' ')[0];
+
     el.innerHTML = `
-      <div class="search-bar">
-        <input class="search-input" id="search-input" type="search" placeholder="🔍 Search food, drinks, merchandise...">
-        <button class="btn btn-primary btn-sm" onclick="App.doSearch()">Search</button>
+      <!-- Hero -->
+      <div class="hero">
+        <div class="hero-content">
+          <div class="hero-greeting">${greeting}, ${name}!</div>
+          <div class="hero-title">What are you craving today?</div>
+          <div class="hero-sub">Order from your favorite DLSL campus stalls.</div>
+          <div class="hero-search">
+            <input id="search-input" type="search" placeholder="Search food, drinks, merchandise...">
+            <button onclick="App.doSearch()">Search</button>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat">🏪 <strong>${state.concessionaires.length}</strong> stalls open</div>
+            <div class="hero-stat">🍽️ <strong>57+</strong> menu items</div>
+            <div class="hero-stat">⚡ <strong>Order & Pickup</strong></div>
+          </div>
+        </div>
       </div>
+
       <div id="home-body">
-        ${renderAnnouncements()}
-        <div style="padding:0 20px 8px;font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Concessionaires</div>
+        <div class="section-header">
+          <div class="section-title">Campus Stalls</div>
+          <div class="section-link" onclick="App.doSearch('')">View all</div>
+        </div>
         <div class="stall-grid" id="stall-grid">${renderStallCards(state.concessionaires)}</div>
       </div>`;
+
     document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
   }
 
-  function renderAnnouncements() {
-    // Placeholder — populated by getBootData
-    return '';
-  }
-
   function renderStallCards(stalls) {
-    if (!stalls.length) return '<p style="padding:20px;color:var(--text3);">No stalls available.</p>';
+    if (!stalls.length) return `<div class="empty-state"><div class="empty-icon">🏪</div><p>No stalls available yet.</p></div>`;
     return stalls.map(s => `
       <div class="stall-card" onclick="App.navigateTo('stall',{stallId:'${s.StallID}'})">
         <div class="stall-banner">
-          ${s.LogoURL ? `<img src="${s.LogoURL}" alt="${s.StallName}">` : '🏪'}
+          ${s.LogoURL
+            ? `<img src="${s.LogoURL}" alt="${s.StallName}" onerror="this.parentElement.innerHTML='<div class=stall-banner-placeholder>🏪</div>'">`
+            : `<div class="stall-banner-placeholder">🍽️</div>`}
+          <div class="stall-open-badge">Open</div>
+          ${s.Rating ? `<div class="stall-rating-badge">⭐ ${Number(s.Rating).toFixed(1)}</div>` : ''}
         </div>
         <div class="stall-info">
           <div class="stall-name">${s.StallName}</div>
-          <div class="stall-location">📍 ${s.Location || 'Campus'}</div>
-          <div class="stall-rating">${stars(Math.round(s.Rating||0))} <span style="color:var(--text2);font-weight:400;">${s.Rating ? Number(s.Rating).toFixed(1) : 'New'}</span></div>
-          <div class="stall-hours">🕐 ${s.OperatingHours || 'See stall for hours'}</div>
+          <div class="stall-meta">
+            <span>📍 ${s.Location || 'Campus'}</span>
+            <span class="dot"></span>
+            <span>🕐 ${s.OperatingHours || 'See stall'}</span>
+          </div>
+          ${s.Description ? `<div class="stall-tags"><span class="stall-tag">${s.Description.split(' ').slice(0,4).join(' ')}...</span></div>` : ''}
         </div>
       </div>`).join('');
   }
@@ -355,7 +407,7 @@ const App = (() => {
   async function renderStallView(stallId) {
     showPage('main');
     const el = document.getElementById('main-content');
-    el.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+    el.innerHTML = `<div class="loader"><div class="spinner"></div><p>Loading menu...</p></div>`;
 
     try {
       const stall    = state.concessionaires.find(s => s.StallID === stallId);
@@ -363,20 +415,29 @@ const App = (() => {
       state.currentStall = stall;
 
       const categories = [...new Set(products.map(p => p.Category).filter(Boolean))];
+      const productsJSON = JSON.stringify(products).replace(/`/g, '\\`');
 
       el.innerHTML = `
-        <div style="background:linear-gradient(135deg,var(--g900),var(--g700));color:#fff;padding:20px;">
-          <button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3);" onclick="App.navigateTo('home')">← Back</button>
-          <h2 style="margin-top:12px;font-size:22px;">${stall?.StallName || 'Stall'}</h2>
-          <p style="color:#a5d6a7;font-size:13px;margin-top:4px;">📍 ${stall?.Location || ''} &nbsp;•&nbsp; 🕐 ${stall?.OperatingHours||'See stall'}</p>
-          <div style="margin-top:8px;">${stars(Math.round(stall?.Rating||0))} <span style="font-size:13px;">${stall?.Rating ? Number(stall.Rating).toFixed(1) + ' rating' : 'No ratings yet'}</span></div>
+        <div class="stall-detail-hero">
+          ${stall?.LogoURL
+            ? `<img src="${stall.LogoURL}" alt="${stall?.StallName}" onerror="this.style.display='none'">`
+            : `<div style="width:100%;height:100%;background:linear-gradient(135deg,var(--g900),var(--g600));display:flex;align-items:center;justify-content:center;font-size:80px;">🍽️</div>`}
+          <button class="stall-detail-back" onclick="App.navigateTo('home')">←</button>
+          <div class="stall-detail-overlay">
+            <div class="stall-detail-name">${stall?.StallName || 'Stall'}</div>
+            <div class="stall-detail-meta">
+              <span>📍 ${stall?.Location || 'Campus'}</span>
+              <span>🕐 ${stall?.OperatingHours || 'See stall'}</span>
+              ${stall?.Rating ? `<span>⭐ ${Number(stall.Rating).toFixed(1)} (${stall.TotalRatings} reviews)</span>` : '<span>⭐ New stall</span>'}
+            </div>
+          </div>
         </div>
-        <div class="chip-row" style="padding:14px 20px 0;">
-          <div class="chip active" data-cat="" onclick="App.filterByCategory(this,'',${JSON.stringify(products).replace(/'/g,"\\'")} )">All</div>
-          ${categories.map(c => `<div class="chip" data-cat="${c}" onclick="App.filterByCategory(this,'${c}',\`${JSON.stringify(products)}\`)">${c}</div>`).join('')}
+        <div class="chip-scroll" style="padding-top:16px;">
+          <div class="chip active" data-cat="" onclick="App.filterByCategory(this,'',\`${productsJSON}\`)">🍽️ All</div>
+          ${categories.map(c => `<div class="chip" data-cat="${c}" onclick="App.filterByCategory(this,'${c.replace(/'/g,"\\'")}',\`${productsJSON}\`)">${c}</div>`).join('')}
         </div>
         <div class="product-grid" id="product-grid">
-          ${products.length ? products.map(productCardHTML).join('') : '<p style="padding:20px;color:var(--text3);">No products available.</p>'}
+          ${products.length ? products.map(productCardHTML).join('') : '<div class="empty-state"><div class="empty-icon">🍽️</div><p>No menu items yet.</p></div>'}
         </div>`;
     } catch { toast('Failed to load stall.','error'); el.innerHTML = '<p style="padding:20px;">Error loading stall.</p>'; }
   }
@@ -391,16 +452,28 @@ const App = (() => {
   }
 
   function productCardHTML(p) {
-    const lowStock = p.Stock >= 0 && p.Stock <= 5;
+    const lowStock   = p.Stock >= 0 && p.Stock <= 5;
+    const unavailable = !p.IsAvailable || p.Stock === 0;
+    const dataAttr   = JSON.stringify(p).replace(/"/g, '&quot;');
+    const inCart     = state.cart.find(i => i.ProductID === p.ProductID);
     return `
-      <div class="product-card${!p.IsAvailable ? ' unavailable' : ''}" onclick="App.addToCart(${JSON.stringify(p).replace(/"/g,'&quot;')})">
-        <div class="thumb">${p.ImageURL ? `<img src="${p.ImageURL}" alt="${p.Name}" loading="lazy">` : '🍽️'}</div>
-        <div class="info">
-          <div class="name">${p.Name}</div>
-          <div class="category">${p.Category || ''}</div>
-          <div class="price">${peso(p.Price)}</div>
-          ${lowStock ? `<div class="stock-low">⚠ Only ${p.Stock} left</div>` : ''}
-          ${!p.IsAvailable ? `<div class="stock-low" style="color:var(--danger);">Unavailable</div>` : ''}
+      <div class="product-card${unavailable ? ' product-unavailable' : ''}">
+        <div class="product-thumb">
+          ${p.ImageURL
+            ? `<img src="${p.ImageURL}" alt="${p.Name}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=font-size:52px>🍽️</span>'">`
+            : `<span style="font-size:52px;">🍽️</span>`}
+        </div>
+        ${lowStock && !unavailable ? `<div class="product-stock-low">⚡ ${p.Stock} left</div>` : ''}
+        ${unavailable ? `<div class="product-unavail-tag">Unavailable</div>` : ''}
+        <div class="product-info">
+          <div class="product-name">${p.Name}</div>
+          <div class="product-cat">${p.Category || ''}</div>
+          <div class="product-footer">
+            <div class="product-price">${peso(p.Price)}</div>
+            ${!unavailable ? `<button class="product-add-btn" onclick="event.stopPropagation();App.addToCart(${dataAttr})" title="Add to cart">
+              ${inCart ? `<span style="font-size:13px;font-weight:800;">${inCart.qty}</span>` : '+'}
+            </button>` : ''}
+          </div>
         </div>
       </div>`;
   }
@@ -502,28 +575,58 @@ const App = (() => {
     });
   }
 
+  function maxQty(item) {
+    // Cap at concessionaire-set stock or 10, whichever is lower
+    const stockLimit = (item.Stock >= 0) ? item.Stock : 10;
+    return Math.min(stockLimit, 10);
+  }
+
   function renderCartItems() {
-    return state.cart.map(item => `
+    return state.cart.map(item => {
+      const max     = maxQty(item);
+      const atMax   = item.qty >= max;
+      const atMin   = item.qty <= 1;
+      const stockLabel = item.Stock >= 0
+        ? `${item.Stock} available`
+        : 'In stock';
+      return `
       <div class="cart-item" id="ci-${item.ProductID}">
-        <div>
+        <div style="flex:1;min-width:0;">
           <div class="cart-item-name">${item.Name}</div>
-          <div class="cart-item-price">${peso(item.Price)} each</div>
+          <div class="cart-item-price">${peso(item.Price)} each &nbsp;·&nbsp; <span style="color:var(--text3);font-size:12px;">${stockLabel}</span></div>
         </div>
         <div class="qty-control">
-          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',-1)">−</button>
+          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',-1)" ${atMin ? '' : ''}>−</button>
           <span class="qty-display">${item.qty}</span>
-          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',1)">+</button>
+          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',1)"
+            ${atMax ? 'disabled style="opacity:.35;cursor:not-allowed;"' : ''}
+            title="${atMax ? `Max ${max} per order` : `Add more`}">+</button>
         </div>
-        <span style="min-width:60px;text-align:right;font-weight:600;">${peso(item.Price * item.qty)}</span>
-      </div>`).join('');
+        <div style="min-width:64px;text-align:right;">
+          <div style="font-weight:600;">${peso(item.Price * item.qty)}</div>
+          ${atMax ? `<div style="font-size:11px;color:var(--warn);">Max ${max}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function changeQty(productId, delta) {
     const item = state.cart.find(i => i.ProductID === productId);
     if (!item) return;
-    item.qty += delta;
-    if (item.qty <= 0) state.cart = state.cart.filter(i => i.ProductID !== productId);
-    if (!state.cart.length) { state.cartStallId = null; state.cartStallName = null; }
+
+    const max    = maxQty(item);
+    const newQty = item.qty + delta;
+
+    if (newQty <= 0) {
+      state.cart = state.cart.filter(i => i.ProductID !== productId);
+      if (!state.cart.length) { state.cartStallId = null; state.cartStallName = null; }
+    } else if (newQty > max) {
+      toast(`Maximum of ${max} per order for this item.`, 'error');
+      return;
+    } else {
+      item.qty = newQty;
+    }
+
     updateCartBadge();
     const el = document.getElementById('cart-items');
     if (el) el.innerHTML = renderCartItems();
@@ -845,21 +948,35 @@ const App = (() => {
       <div class="modal-overlay" id="modal-product">
         <div class="modal">
           <div class="modal-header">
-            <h3>Add Menu Item</h3>
+            <h3>➕ Add Menu Item</h3>
             <button class="modal-close" onclick="App.closeModal('modal-product')">✕</button>
           </div>
           <div class="modal-body">
-            <div class="form-row">
-              <div class="form-group"><label class="form-label">Name *</label><input class="form-control" id="p-name" placeholder="e.g. Spaghetti"></div>
-              <div class="form-group"><label class="form-label">Category *</label><input class="form-control" id="p-category" placeholder="e.g. Pasta, Drinks"></div>
+            <!-- Image upload -->
+            <div class="form-group">
+              <label class="form-label">Product Photo</label>
+              <div class="img-upload-area" id="p-img-upload-area">
+                <input type="file" accept="image/*" id="p-img-file" onchange="App.previewProductImage(this)">
+                <div id="p-img-preview-wrap">
+                  <div class="img-upload-icon">📷</div>
+                  <div class="img-upload-label">Click or drag to upload photo</div>
+                  <div class="img-upload-hint">JPG, PNG, WEBP · Max 5MB</div>
+                </div>
+              </div>
+              <div class="img-or">or paste a URL</div>
+              <input class="form-control" id="p-img" placeholder="https://example.com/photo.jpg" oninput="App.previewFromURL(this.value,'p-img-preview-wrap')">
             </div>
-            <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="p-desc" placeholder="Brief description"></div>
+
             <div class="form-row">
-              <div class="form-group"><label class="form-label">Price (₱) *</label><input class="form-control" type="number" id="p-price" min="1" step="0.5"></div>
-              <div class="form-group"><label class="form-label">Stock (-1 = unlimited)</label><input class="form-control" type="number" id="p-stock" value="-1"></div>
+              <div class="form-group"><label class="form-label">Item Name *</label><input class="form-control" id="p-name" placeholder="e.g. Chicken Adobo"></div>
+              <div class="form-group"><label class="form-label">Category *</label><input class="form-control" id="p-category" placeholder="e.g. Rice Meals, Drinks"></div>
             </div>
-            <div class="form-group"><label class="form-label">Image URL</label><input class="form-control" id="p-img" placeholder="https://..."></div>
-            <div class="alert alert-info" style="font-size:13px;">Your item will be reviewed by RESGO before appearing to customers.</div>
+            <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="p-desc" rows="2" placeholder="Brief appetizing description..."></textarea></div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Price (₱) *</label><input class="form-control" type="number" id="p-price" min="1" step="0.5" placeholder="0.00"></div>
+              <div class="form-group"><label class="form-label">Stock <span style="color:var(--text3);font-weight:400;">(-1 = unlimited)</span></label><input class="form-control" type="number" id="p-stock" value="-1"></div>
+            </div>
+            <div class="alert alert-info" style="font-size:13px;">📋 Your item will be reviewed by RESGO before appearing to customers.</div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-ghost" onclick="App.closeModal('modal-product')">Cancel</button>
@@ -869,23 +986,64 @@ const App = (() => {
       </div>`;
   }
 
+  function previewProductImage(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5MB.', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wrap = document.getElementById('p-img-preview-wrap');
+      if (wrap) wrap.innerHTML = `<img src="${e.target.result}" class="img-upload-preview"><div style="font-size:12px;color:var(--g800);font-weight:600;">✓ ${file.name}</div>`;
+      document.getElementById('p-img').value = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function previewFromURL(url, wrapId) {
+    if (!url) return;
+    const wrap = document.getElementById(wrapId);
+    if (wrap) wrap.innerHTML = `<img src="${url}" class="img-upload-preview" onerror="this.style.display='none'">`;
+    document.getElementById('p-img-file') && (document.getElementById('p-img-file').value = '');
+  }
+
+  async function uploadImageIfNeeded() {
+    const fileInput = document.getElementById('p-img-file');
+    const urlInput  = document.getElementById('p-img');
+
+    if (urlInput?.value.trim()) return urlInput.value.trim();
+    if (!fileInput?.files?.[0]) return '';
+
+    const file   = fileInput.files[0];
+    const reader = new FileReader();
+    const base64 = await new Promise(resolve => {
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+
+    toast('Uploading image…', 'info');
+    const res = await call('uploadImage', state.token, base64, file.type, file.name);
+    if (!res.success) throw new Error(res.error || 'Upload failed');
+    return res.url;
+  }
+
   function openProductModal() { openModal('modal-product'); }
 
   async function saveProduct() {
     const btn = document.getElementById('save-product-btn');
     setLoading(btn, true);
     try {
+      const imageUrl = await uploadImageIfNeeded();
       const res = await call('addProduct', state.token, {
-        name: document.getElementById('p-name').value,
-        category: document.getElementById('p-category').value,
+        name:        document.getElementById('p-name').value,
+        category:    document.getElementById('p-category').value,
         description: document.getElementById('p-desc').value,
-        price: document.getElementById('p-price').value,
-        stock: document.getElementById('p-stock').value,
-        imageUrl: document.getElementById('p-img').value
+        price:       document.getElementById('p-price').value,
+        stock:       document.getElementById('p-stock').value,
+        imageUrl
       });
-      if (res.success) { closeModal('modal-product'); toast('Submitted for approval!'); renderConcProducts(); }
-      else toast(res.error,'error');
-    } catch { toast('Failed to save.','error'); }
+      if (res.success) { closeModal('modal-product'); toast('✓ Submitted for approval!'); renderConcProducts(); }
+      else toast(res.error, 'error');
+    } catch (e) { toast(e.message || 'Failed to save.', 'error'); }
     finally { setLoading(btn, false); }
   }
 
@@ -1128,18 +1286,31 @@ const App = (() => {
     return `
       <div class="modal-overlay" id="modal-add-stall">
         <div class="modal">
-          <div class="modal-header"><h3>Add Concessionaire</h3><button class="modal-close" onclick="App.closeModal('modal-add-stall')">✕</button></div>
+          <div class="modal-header"><h3>🏪 Add Concessionaire</h3><button class="modal-close" onclick="App.closeModal('modal-add-stall')">✕</button></div>
           <div class="modal-body">
+            <!-- Logo upload -->
+            <div class="form-group">
+              <label class="form-label">Stall Banner / Logo</label>
+              <div class="img-upload-area">
+                <input type="file" accept="image/*" id="s-logo-file" onchange="App.previewStallImage(this)">
+                <div id="s-logo-preview-wrap">
+                  <div class="img-upload-icon">🏪</div>
+                  <div class="img-upload-label">Upload banner photo</div>
+                  <div class="img-upload-hint">JPG, PNG · Max 5MB · Recommended 800×400px</div>
+                </div>
+              </div>
+              <div class="img-or">or paste a URL</div>
+              <input class="form-control" id="s-logo" placeholder="https://example.com/banner.jpg" oninput="App.previewFromURL(this.value,'s-logo-preview-wrap')">
+            </div>
             <div class="form-row">
-              <div class="form-group"><label class="form-label">Stall Name *</label><input class="form-control" id="s-name" placeholder="e.g. Jollibee Kiosk"></div>
+              <div class="form-group"><label class="form-label">Stall Name *</label><input class="form-control" id="s-name" placeholder="e.g. Mamang Cora's Kitchen"></div>
               <div class="form-group"><label class="form-label">Email *</label><input class="form-control" id="s-email" type="email" placeholder="stall@dlsl.edu.ph"></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label class="form-label">Location</label><input class="form-control" id="s-loc" placeholder="e.g. Canteen Bldg, 2F"></div>
-              <div class="form-group"><label class="form-label">Operating Hours</label><input class="form-control" id="s-hours" placeholder="Mon-Fri 7AM-5PM"></div>
+              <div class="form-group"><label class="form-label">Location</label><input class="form-control" id="s-loc" placeholder="e.g. Main Canteen, Stall 2"></div>
+              <div class="form-group"><label class="form-label">Operating Hours</label><input class="form-control" id="s-hours" placeholder="Mon–Fri 7:00 AM – 5:00 PM"></div>
             </div>
-            <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="s-desc" placeholder="Brief description of stall"></div>
-            <div class="form-group"><label class="form-label">Logo URL</label><input class="form-control" id="s-logo" placeholder="https://..."></div>
+            <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="s-desc" rows="2" placeholder="Brief description of the stall's offerings"></textarea></div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-ghost" onclick="App.closeModal('modal-add-stall')">Cancel</button>
@@ -1151,21 +1322,52 @@ const App = (() => {
 
   function openAddStallModal() { openModal('modal-add-stall'); }
 
+  function previewStallImage(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5MB.', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wrap = document.getElementById('s-logo-preview-wrap');
+      if (wrap) wrap.innerHTML = `<img src="${e.target.result}" class="img-upload-preview"><div style="font-size:12px;color:var(--g800);font-weight:600;">✓ ${file.name}</div>`;
+      document.getElementById('s-logo').value = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function uploadStallImageIfNeeded() {
+    const fileInput = document.getElementById('s-logo-file');
+    const urlInput  = document.getElementById('s-logo');
+    if (urlInput?.value.trim()) return urlInput.value.trim();
+    if (!fileInput?.files?.[0]) return '';
+    const file   = fileInput.files[0];
+    const reader = new FileReader();
+    const base64 = await new Promise(resolve => {
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+    toast('Uploading logo…', 'info');
+    const res = await call('uploadImage', state.token, base64, file.type, file.name);
+    if (!res.success) throw new Error(res.error || 'Upload failed');
+    return res.url;
+  }
+
   async function saveStall() {
     const btn = document.getElementById('save-stall-btn');
     setLoading(btn, true);
     try {
+      const logoUrl = await uploadStallImageIfNeeded();
       const res = await call('addConcessionaire', state.token, {
-        stallName: document.getElementById('s-name').value,
-        email: document.getElementById('s-email').value,
-        location: document.getElementById('s-loc').value,
+        stallName:      document.getElementById('s-name').value,
+        email:          document.getElementById('s-email').value,
+        location:       document.getElementById('s-loc').value,
         operatingHours: document.getElementById('s-hours').value,
-        description: document.getElementById('s-desc').value,
-        logoUrl: document.getElementById('s-logo').value
+        description:    document.getElementById('s-desc').value,
+        logoUrl
       });
-      if (res.success) { closeModal('modal-add-stall'); toast('Stall added!'); renderAdminStalls(); }
+      if (res.success) { closeModal('modal-add-stall'); toast('✓ Stall added!'); renderAdminStalls(); }
       else toast(res.error,'error');
-    } catch { toast('Failed.','error'); }
+    } catch (e) { toast(e.message || 'Failed.','error'); }
     finally { setLoading(btn, false); }
   }
 
@@ -1275,9 +1477,10 @@ const App = (() => {
     cancelOrder, openRatingModal, selectStar, submitRating,
     updateStatus, filterStallOrders,
     openProductModal, saveProduct, toggleAvailability, deleteProduct, openHoursModal,
+    previewProductImage, previewFromURL,
     approveProduct,
     openAddUserModal, saveUser, deactivateUser,
-    openAddStallModal, saveStall, approveStall,
+    openAddStallModal, saveStall, approveStall, previewStallImage,
     loadReport,
     openModal, closeModal
   };

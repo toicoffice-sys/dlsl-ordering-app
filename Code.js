@@ -3,7 +3,37 @@
 // Main entry point: routing, auth, sessions, utilities
 // ============================================================
 
-const SPREADSHEET_ID = '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI';
+const SPREADSHEET_ID   = '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI';
+const IMAGES_FOLDER_NAME = 'DLSL Ordering App — Images';
+
+// ------------------------------------------------------------
+// Image upload to Google Drive
+// ------------------------------------------------------------
+
+function uploadImage(token, base64Data, mimeType, filename) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+
+  const allowed = [ROLES.ADMIN, ROLES.CONCESSIONAIRE];
+  if (!allowed.includes(session.role)) return { success: false, error: 'Unauthorized.' };
+
+  try {
+    // Find or create the shared images folder
+    let folder;
+    const folders = DriveApp.getFoldersByName(IMAGES_FOLDER_NAME);
+    folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(IMAGES_FOLDER_NAME);
+
+    const decoded = Utilities.base64Decode(base64Data);
+    const blob    = Utilities.newBlob(decoded, mimeType, filename);
+    const file    = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+    return { success: true, url };
+  } catch (e) {
+    return { success: false, error: 'Upload failed: ' + e.message };
+  }
+}
 
 const SHEETS = {
   USERS:           'Users',
@@ -152,7 +182,14 @@ function verifyOTP(email, code) {
       stallData = getStallByEmail(email);
     }
 
-    return { success: true, token, user: userData, stallData };
+    return {
+      success: true,
+      token,
+      user: userData,
+      stallData,
+      concessionaires: getConcessionaires(true),
+      announcements:   getAnnouncements()
+    };
   }
 
   return { success: false, error: 'OTP not found. Please request a new one.' };
