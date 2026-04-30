@@ -1,0 +1,1287 @@
+<script>
+// ============================================================
+// DLSL Ordering App — Scripts.html
+// SPA client logic: routing, state, API calls
+// ============================================================
+
+const App = (() => {
+  // ---- State ----
+  let state = {
+    token: null, user: null, role: null, stallData: null,
+    cart: [], cartStallId: null, cartStallName: null,
+    view: 'login', subview: null,
+    concessionaires: [], products: [], orders: [],
+    currentStall: null, selectedOrder: null
+  };
+
+  // ---- Persist token ----
+  function loadToken()  { return sessionStorage.getItem('dlsl_ordering_token'); }
+  function saveToken(t) { sessionStorage.setItem('dlsl_ordering_token', t); }
+  function clearToken() { sessionStorage.removeItem('dlsl_ordering_token'); }
+
+  // ---- GAS caller ----
+  function call(fn, ...args) {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)
+        [fn](...args);
+    });
+  }
+
+  // ---- Toast ----
+  function toast(msg, type = 'success') {
+    const c = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  // ---- Show/hide pages ----
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const el = document.getElementById('page-' + id);
+    if (el) el.classList.add('active');
+  }
+
+  // ---- Modals ----
+  function openModal(id) { document.getElementById(id)?.classList.add('open'); }
+  function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
+
+  // ---- Loading overlay ----
+  function setLoading(el, loading) {
+    if (!el) return;
+    if (loading) { el._orig = el.innerHTML; el.disabled = true; el.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;"></div>'; }
+    else         { el.disabled = false; el.innerHTML = el._orig || ''; }
+  }
+
+  // ---- Format ----
+  function peso(n) { return '₱' + Number(n).toFixed(2); }
+  function relTime(iso) {
+    const d = new Date(iso), now = Date.now(), diff = now - d;
+    if (diff < 60000)    return 'Just now';
+    if (diff < 3600000)  return Math.floor(diff/60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+    return d.toLocaleDateString('en-PH', { month:'short', day:'numeric' });
+  }
+  function statusBadge(s) {
+    const labels = { pending:'Pending', confirmed:'Confirmed', preparing:'Preparing',
+                     ready:'Ready', completed:'Completed', cancelled:'Cancelled',
+                     approved:'Approved', rejected:'Rejected' };
+    return `<span class="badge badge-${s}">${labels[s]||s}</span>`;
+  }
+  function stars(n, max=5) {
+    return Array.from({length:max}, (_,i) => `<span style="color:${i<n?'#C9A84C':'#e0e0e0'}">★</span>`).join('');
+  }
+
+  // ================================================================
+  // AUTH
+  // ================================================================
+
+  async function init() {
+    const t = loadToken();
+    if (t) {
+      try {
+        const res = await call('getBootData', t);
+        if (res.success) {
+          state.token = t;
+          bootSession(res);
+          return;
+        }
+      } catch {}
+      clearToken();
+    }
+    showPage('login');
+    renderLoginStep1();
+  }
+
+  function bootSession(res) {
+    state.user = res.user;
+    state.role = res.role;
+    state.stallData = res.stallData;
+    state.concessionaires = res.concessionaires || [];
+    document.getElementById('topnav-username').textContent = res.user.name;
+    document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('bottom-nav').style.display = 'block';
+    if (res.role === 'admin' || res.role === 'concessionaire') {
+      document.getElementById('topnav-cart').style.display = 'none';
+    }
+    setupNavForRole(res.role);
+    navigateTo('home');
+  }
+
+  // Step 1 — email input
+  function renderLoginStep1(error) {
+    const right = document.getElementById('login-right');
+    right.innerHTML = `
+      <h1 style="font-size:26px;font-weight:800;color:var(--g900);margin-bottom:6px;">Sign In</h1>
+      <p style="color:var(--text2);margin-bottom:28px;font-size:14px;">Use your DLSL email to continue.</p>
+      ${error ? `<div class="alert alert-danger">${error}</div>` : ''}
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input type="email" class="form-control" id="login-email" placeholder="your.name@dlsl.edu.ph" autocomplete="email">
+      </div>
+      <button class="btn btn-primary btn-block" id="login-submit-btn" onclick="App.submitEmail()">Continue</button>
+      <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;">
+        Not registered? Contact RESGO to create your account.
+      </p>`;
+    document.getElementById('login-email')?.focus();
+  }
+
+  async function submitEmail() {
+    const email = document.getElementById('login-email')?.value.trim();
+    if (!email) { toast('Please enter your email.','error'); return; }
+
+    const btn = document.getElementById('login-submit-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('requestAccess', email);
+      if (res.success) {
+        renderLoginStep2(email, res.name);
+      } else {
+        renderLoginStep1(res.error);
+      }
+    } catch (e) { renderLoginStep1('Connection error. Please try again.'); }
+    finally { setLoading(btn, false); }
+  }
+
+  // Step 2 — OTP
+  function renderLoginStep2(email, name, error) {
+    const right = document.getElementById('login-right');
+    right.innerHTML = `
+      <h1 style="font-size:26px;font-weight:800;color:var(--g900);margin-bottom:6px;">Enter OTP</h1>
+      <p style="color:var(--text2);margin-bottom:4px;font-size:14px;">Hello, <strong>${name}</strong>! A 6-digit code was sent to:</p>
+      <p style="font-weight:600;font-size:14px;color:var(--g800);margin-bottom:24px;">${email}</p>
+      ${error ? `<div class="alert alert-danger">${error}</div>` : ''}
+      <div class="otp-group" id="otp-group">
+        ${Array.from({length:6}, (_,i) => `<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
+      </div>
+      <button class="btn btn-primary btn-block" id="otp-submit-btn" onclick="App.submitOTP('${email}')">Verify</button>
+      <div style="text-align:center;margin-top:16px;">
+        <button class="btn btn-ghost btn-sm" id="resend-btn" onclick="App.resendOTP('${email}','${name}')">Resend OTP</button>
+        <button class="btn btn-ghost btn-sm" onclick="App.renderLoginStep1()">← Change email</button>
+      </div>`;
+    setupOTPInputs();
+  }
+
+  function setupOTPInputs() {
+    for (let i = 0; i < 6; i++) {
+      const el = document.getElementById(`otp-${i}`);
+      if (!el) continue;
+      el.addEventListener('input', e => {
+        e.target.value = e.target.value.replace(/\D/g,'').slice(0,1);
+        if (e.target.value && i < 5) document.getElementById(`otp-${i+1}`)?.focus();
+      });
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Backspace' && !e.target.value && i > 0) document.getElementById(`otp-${i-1}`)?.focus();
+      });
+      el.addEventListener('paste', e => {
+        e.preventDefault();
+        const digits = (e.clipboardData.getData('text').replace(/\D/g,'')).slice(0,6);
+        digits.split('').forEach((d,j) => { const inp = document.getElementById(`otp-${j}`); if(inp) inp.value = d; });
+        document.getElementById(`otp-${Math.min(digits.length, 5)}`)?.focus();
+      });
+    }
+    document.getElementById('otp-0')?.focus();
+  }
+
+  async function submitOTP(email) {
+    const code = Array.from({length:6}, (_,i) => document.getElementById(`otp-${i}`)?.value || '').join('');
+    if (code.length < 6) { toast('Enter all 6 digits.','error'); return; }
+
+    const btn = document.getElementById('otp-submit-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('verifyOTP', email, code);
+      if (res.success) {
+        saveToken(res.token);
+        state.token = res.token;
+        bootSession(res);
+      } else {
+        renderLoginStep2(email, '', res.error);
+      }
+    } catch { toast('Connection error. Please try again.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  async function resendOTP(email, name) {
+    const btn = document.getElementById('resend-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+    try {
+      const res = await call('resendOTP', email);
+      if (res.success) { toast('New OTP sent!','success'); renderLoginStep2(email, name || res.name); }
+      else { toast(res.error,'error'); if(btn){btn.disabled=false;btn.textContent='Resend OTP';} }
+    } catch { toast('Connection error.','error'); if(btn){btn.disabled=false;btn.textContent='Resend OTP';} }
+  }
+
+  async function doLogout() {
+    if (state.token) await call('logout', state.token).catch(()=>{});
+    state = { token:null, user:null, role:null, stallData:null, cart:[], cartStallId:null, cartStallName:null, view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null };
+    clearToken();
+    document.getElementById('main-nav').style.display = 'none';
+    document.getElementById('bottom-nav').style.display = 'none';
+    document.getElementById('topnav-cart').style.display = '';
+    showPage('login');
+    renderLoginStep1();
+  }
+
+  // ================================================================
+  // NAVIGATION
+  // ================================================================
+
+  function setupNavForRole(role) {
+    const tabs = document.getElementById('bottom-tabs');
+    const navItems = document.getElementById('top-nav-items');
+    if (!tabs || !navItems) return;
+
+    const customerTabs = [
+      { id:'home',    icon:'🏠', label:'Home' },
+      { id:'orders',  icon:'📦', label:'Orders' },
+      { id:'profile', icon:'👤', label:'Profile' }
+    ];
+    const concTabs = [
+      { id:'home',     icon:'📊', label:'Dashboard' },
+      { id:'products', icon:'🍽️', label:'Menu' },
+      { id:'orders',   icon:'📦', label:'Orders' }
+    ];
+    const adminTabs = [
+      { id:'home',    icon:'📊', label:'Dashboard' },
+      { id:'users',   icon:'👥', label:'Users' },
+      { id:'stalls',  icon:'🏪', label:'Stalls' },
+      { id:'reports', icon:'📈', label:'Reports' }
+    ];
+
+    const tabList = role === 'admin' ? adminTabs : role === 'concessionaire' ? concTabs : customerTabs;
+
+    tabs.innerHTML = tabList.map(t => `
+      <button class="tab-btn" data-nav="${t.id}" onclick="App.navigateTo('${t.id}')">
+        <span class="tab-icon">${t.icon}</span>
+        <span>${t.label}</span>
+      </button>`).join('');
+
+    navItems.innerHTML = tabList.map(t =>
+      `<button class="topnav-btn" onclick="App.navigateTo('${t.id}')">${t.label}</button>`
+    ).join('');
+  }
+
+  function navigateTo(view, params) {
+    state.view = view;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.nav === view));
+
+    switch (view) {
+      case 'home':
+        if (state.role === 'admin') renderAdminDashboard();
+        else if (state.role === 'concessionaire') renderConcDashboard();
+        else renderCustomerHome();
+        break;
+      case 'stall':    renderStallView(params?.stallId); break;
+      case 'cart':     renderCart(); break;
+      case 'orders':
+        if (state.role === 'concessionaire' || state.role === 'admin') renderStallOrders();
+        else renderMyOrders();
+        break;
+      case 'order-detail': renderOrderDetail(params?.orderId); break;
+      case 'products': renderConcProducts(); break;
+      case 'users':    renderAdminUsers(); break;
+      case 'stalls':   renderAdminStalls(); break;
+      case 'reports':  renderAdminReports(); break;
+      case 'profile':  renderProfile(); break;
+    }
+  }
+
+  // ================================================================
+  // CUSTOMER HOME
+  // ================================================================
+
+  function renderCustomerHome() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div class="search-bar">
+        <input class="search-input" id="search-input" type="search" placeholder="🔍 Search food, drinks, merchandise...">
+        <button class="btn btn-primary btn-sm" onclick="App.doSearch()">Search</button>
+      </div>
+      <div id="home-body">
+        ${renderAnnouncements()}
+        <div style="padding:0 20px 8px;font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Concessionaires</div>
+        <div class="stall-grid" id="stall-grid">${renderStallCards(state.concessionaires)}</div>
+      </div>`;
+    document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+  }
+
+  function renderAnnouncements() {
+    // Placeholder — populated by getBootData
+    return '';
+  }
+
+  function renderStallCards(stalls) {
+    if (!stalls.length) return '<p style="padding:20px;color:var(--text3);">No stalls available.</p>';
+    return stalls.map(s => `
+      <div class="stall-card" onclick="App.navigateTo('stall',{stallId:'${s.StallID}'})">
+        <div class="stall-banner">
+          ${s.LogoURL ? `<img src="${s.LogoURL}" alt="${s.StallName}">` : '🏪'}
+        </div>
+        <div class="stall-info">
+          <div class="stall-name">${s.StallName}</div>
+          <div class="stall-location">📍 ${s.Location || 'Campus'}</div>
+          <div class="stall-rating">${stars(Math.round(s.Rating||0))} <span style="color:var(--text2);font-weight:400;">${s.Rating ? Number(s.Rating).toFixed(1) : 'New'}</span></div>
+          <div class="stall-hours">🕐 ${s.OperatingHours || 'See stall for hours'}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  async function doSearch() {
+    const q = document.getElementById('search-input')?.value.trim();
+    if (!q) { renderCustomerHome(); return; }
+
+    const body = document.getElementById('home-body');
+    if (body) body.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+    try {
+      const results = await call('searchProducts', q);
+      if (body) body.innerHTML = results.length
+        ? `<div style="padding:12px 20px;font-size:13px;color:var(--text2);">${results.length} result(s) for "<strong>${q}</strong>"</div>
+           <div class="product-grid">${results.map(productCardHTML).join('')}</div>`
+        : `<p style="padding:30px 20px;color:var(--text3);text-align:center;">No results for "<strong>${q}</strong>"</p>`;
+    } catch { toast('Search failed.','error'); }
+  }
+
+  // ================================================================
+  // STALL VIEW
+  // ================================================================
+
+  async function renderStallView(stallId) {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+
+    try {
+      const stall    = state.concessionaires.find(s => s.StallID === stallId);
+      const products = await call('getProductsByStall', stallId);
+      state.currentStall = stall;
+
+      const categories = [...new Set(products.map(p => p.Category).filter(Boolean))];
+
+      el.innerHTML = `
+        <div style="background:linear-gradient(135deg,var(--g900),var(--g700));color:#fff;padding:20px;">
+          <button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3);" onclick="App.navigateTo('home')">← Back</button>
+          <h2 style="margin-top:12px;font-size:22px;">${stall?.StallName || 'Stall'}</h2>
+          <p style="color:#a5d6a7;font-size:13px;margin-top:4px;">📍 ${stall?.Location || ''} &nbsp;•&nbsp; 🕐 ${stall?.OperatingHours||'See stall'}</p>
+          <div style="margin-top:8px;">${stars(Math.round(stall?.Rating||0))} <span style="font-size:13px;">${stall?.Rating ? Number(stall.Rating).toFixed(1) + ' rating' : 'No ratings yet'}</span></div>
+        </div>
+        <div class="chip-row" style="padding:14px 20px 0;">
+          <div class="chip active" data-cat="" onclick="App.filterByCategory(this,'',${JSON.stringify(products).replace(/'/g,"\\'")} )">All</div>
+          ${categories.map(c => `<div class="chip" data-cat="${c}" onclick="App.filterByCategory(this,'${c}',\`${JSON.stringify(products)}\`)">${c}</div>`).join('')}
+        </div>
+        <div class="product-grid" id="product-grid">
+          ${products.length ? products.map(productCardHTML).join('') : '<p style="padding:20px;color:var(--text3);">No products available.</p>'}
+        </div>`;
+    } catch { toast('Failed to load stall.','error'); el.innerHTML = '<p style="padding:20px;">Error loading stall.</p>'; }
+  }
+
+  function filterByCategory(chip, cat, productsJson) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    let products = typeof productsJson === 'string' ? JSON.parse(productsJson) : productsJson;
+    if (cat) products = products.filter(p => p.Category === cat);
+    const grid = document.getElementById('product-grid');
+    if (grid) grid.innerHTML = products.map(productCardHTML).join('') || '<p style="padding:20px;color:var(--text3);">No products in this category.</p>';
+  }
+
+  function productCardHTML(p) {
+    const lowStock = p.Stock >= 0 && p.Stock <= 5;
+    return `
+      <div class="product-card${!p.IsAvailable ? ' unavailable' : ''}" onclick="App.addToCart(${JSON.stringify(p).replace(/"/g,'&quot;')})">
+        <div class="thumb">${p.ImageURL ? `<img src="${p.ImageURL}" alt="${p.Name}" loading="lazy">` : '🍽️'}</div>
+        <div class="info">
+          <div class="name">${p.Name}</div>
+          <div class="category">${p.Category || ''}</div>
+          <div class="price">${peso(p.Price)}</div>
+          ${lowStock ? `<div class="stock-low">⚠ Only ${p.Stock} left</div>` : ''}
+          ${!p.IsAvailable ? `<div class="stock-low" style="color:var(--danger);">Unavailable</div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  // ================================================================
+  // CART
+  // ================================================================
+
+  function addToCart(product) {
+    // Enforce single-stall cart
+    if (state.cartStallId && state.cartStallId !== product.StallID) {
+      if (!confirm(`Your cart has items from ${state.cartStallName}. Clear cart and add from ${product.StallName}?`)) return;
+      state.cart = [];
+    }
+    state.cartStallId   = product.StallID;
+    state.cartStallName = product.StallName;
+
+    const existing = state.cart.find(i => i.ProductID === product.ProductID);
+    if (existing) existing.qty++;
+    else state.cart.push({ ...product, qty: 1 });
+
+    updateCartBadge();
+    toast(`${product.Name} added to cart`, 'success');
+  }
+
+  function updateCartBadge() {
+    const badge = document.getElementById('cart-badge');
+    const total = state.cart.reduce((s, i) => s + i.qty, 0);
+    if (badge) { badge.textContent = total; badge.style.display = total ? 'flex' : 'none'; }
+  }
+
+  function renderCart() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+
+    if (!state.cart.length) {
+      el.innerHTML = `
+        <div style="padding:20px;">
+          <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('home')">← Back</button>
+          <div style="text-align:center;padding:60px 20px;">
+            <div style="font-size:64px;">🛒</div>
+            <p style="color:var(--text2);margin-top:12px;">Your cart is empty.</p>
+            <button class="btn btn-primary" style="margin-top:16px;" onclick="App.navigateTo('home')">Browse Stalls</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const subtotal = state.cart.reduce((s,i) => s + (i.Price * i.qty), 0);
+
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+          <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('home')">← Back</button>
+          <h2 style="font-size:18px;font-weight:700;">Your Cart</h2>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header"><h2>🏪 ${state.cartStallName}</h2></div>
+          <div class="card-body" id="cart-items">${renderCartItems()}</div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label">Payment Method</label>
+              <select class="form-control" id="payment-method">
+                <option value="cash_on_pickup">Cash on Pickup</option>
+                <option value="gcash">GCash</option>
+                <option value="maya">Maya</option>
+              </select>
+            </div>
+            <div id="payment-ref-group" style="display:none;" class="form-group">
+              <label class="form-label">Reference Number</label>
+              <input class="form-control" id="payment-ref" placeholder="Enter GCash/Maya reference number">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Notes (optional)</label>
+              <input class="form-control" id="order-notes" placeholder="Special instructions...">
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+              <span style="color:var(--text2);">Subtotal</span>
+              <span>${peso(subtotal)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-weight:700;font-size:17px;padding-top:12px;border-top:1px solid var(--border);">
+              <span>Total</span>
+              <span style="color:var(--g800);">${peso(subtotal)}</span>
+            </div>
+            <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()">Place Order</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('payment-method').addEventListener('change', function() {
+      const refGroup = document.getElementById('payment-ref-group');
+      refGroup.style.display = this.value !== 'cash_on_pickup' ? 'block' : 'none';
+    });
+  }
+
+  function renderCartItems() {
+    return state.cart.map(item => `
+      <div class="cart-item" id="ci-${item.ProductID}">
+        <div>
+          <div class="cart-item-name">${item.Name}</div>
+          <div class="cart-item-price">${peso(item.Price)} each</div>
+        </div>
+        <div class="qty-control">
+          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',-1)">−</button>
+          <span class="qty-display">${item.qty}</span>
+          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',1)">+</button>
+        </div>
+        <span style="min-width:60px;text-align:right;font-weight:600;">${peso(item.Price * item.qty)}</span>
+      </div>`).join('');
+  }
+
+  function changeQty(productId, delta) {
+    const item = state.cart.find(i => i.ProductID === productId);
+    if (!item) return;
+    item.qty += delta;
+    if (item.qty <= 0) state.cart = state.cart.filter(i => i.ProductID !== productId);
+    if (!state.cart.length) { state.cartStallId = null; state.cartStallName = null; }
+    updateCartBadge();
+    const el = document.getElementById('cart-items');
+    if (el) el.innerHTML = renderCartItems();
+    else renderCart();
+  }
+
+  async function placeOrder() {
+    const method = document.getElementById('payment-method')?.value;
+    const ref    = document.getElementById('payment-ref')?.value.trim();
+    const notes  = document.getElementById('order-notes')?.value.trim();
+
+    if (!state.cart.length) { toast('Your cart is empty.','error'); return; }
+    if (method !== 'cash_on_pickup' && !ref) { toast('Please enter your payment reference number.','error'); return; }
+
+    const btn = document.getElementById('place-order-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('placeOrder', state.token, {
+        stallId: state.cartStallId,
+        items: state.cart.map(i => ({ productId: i.ProductID, qty: i.qty })),
+        paymentMethod: method, paymentRef: ref, notes
+      });
+
+      if (res.success) {
+        state.cart = []; state.cartStallId = null; state.cartStallName = null;
+        updateCartBadge();
+        showOrderSuccess(res.orderId, res.pickupCode, res.total);
+      } else { toast(res.error,'error'); }
+    } catch { toast('Failed to place order.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  function showOrderSuccess(orderId, pickupCode, total) {
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:30px 20px;text-align:center;">
+        <div style="font-size:64px;margin-bottom:16px;">✅</div>
+        <h2 style="font-size:22px;font-weight:800;color:var(--g800);">Order Placed!</h2>
+        <p style="color:var(--text2);margin:8px 0 24px;">Your order has been sent to the stall.</p>
+        <div class="pickup-box" style="max-width:280px;margin:0 auto 24px;">
+          <div class="pickup-label">Pickup Code</div>
+          <div class="pickup-code">${pickupCode}</div>
+          <div style="font-size:12px;color:var(--text2);">Show this when you pick up your order</div>
+        </div>
+        <p style="font-size:13px;color:var(--text3);">Order ID: ${orderId} &nbsp;|&nbsp; Total: ${peso(total)}</p>
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:24px;">
+          <button class="btn btn-outline" onclick="App.navigateTo('orders')">View Orders</button>
+          <button class="btn btn-primary" onclick="App.navigateTo('home')">Back to Home</button>
+        </div>
+      </div>`;
+  }
+
+  // ================================================================
+  // CUSTOMER ORDERS
+  // ================================================================
+
+  async function renderMyOrders() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">My Orders</h2>
+        <div id="orders-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>`;
+
+    try {
+      const res = await call('getMyOrders', state.token);
+      const list = document.getElementById('orders-list');
+      if (!res.success) { list.innerHTML = `<div class="alert alert-danger">${res.error}</div>`; return; }
+
+      list.innerHTML = res.orders.length
+        ? res.orders.map(orderCardHTML).join('')
+        : '<p style="color:var(--text3);text-align:center;padding:40px 0;">No orders yet.</p>';
+    } catch { toast('Failed to load orders.','error'); }
+  }
+
+  function orderCardHTML(o) {
+    const itemSummary = (o.Items||[]).map(i => `${i.qty}× ${i.name}`).join(', ');
+    return `
+      <div class="order-item" onclick="App.navigateTo('order-detail',{orderId:'${o.OrderID}'})">
+        <div class="order-header">
+          <span class="order-stall">${o.StallName}</span>
+          ${statusBadge(o.Status)}
+          <span class="order-time">${relTime(o.CreatedAt)}</span>
+        </div>
+        <div class="order-items-summary">${itemSummary}</div>
+        <div class="order-footer">
+          <span class="order-id">${o.OrderID}</span>
+          <span class="order-total">${peso(o.Total)}</span>
+        </div>
+      </div>`;
+  }
+
+  async function renderOrderDetail(orderId) {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+
+    try {
+      const res = await call('getOrderDetail', state.token, orderId);
+      if (!res.success) { toast(res.error,'error'); navigateTo('orders'); return; }
+
+      const o = res.order;
+      const items = o.Items || [];
+      const isCustomer = state.role === 'student' || state.role === 'parent' || state.role === 'partner';
+      const canCancel  = isCustomer && ['pending','confirmed'].includes(o.Status);
+      const canRate    = isCustomer && o.Status === 'completed';
+
+      const statusFlow = ['pending','confirmed','preparing','ready','completed'];
+      const currentIdx = statusFlow.indexOf(o.Status);
+
+      el.innerHTML = `
+        <div style="padding:20px;">
+          <button class="btn btn-ghost btn-sm" onclick="history.back()" style="margin-bottom:16px;">← Back</button>
+          <div class="card" style="margin-bottom:14px;">
+            <div class="card-header">
+              <div>
+                <div style="font-size:16px;font-weight:700;">${o.StallName}</div>
+                <div class="order-id">${o.OrderID}</div>
+              </div>
+              ${statusBadge(o.Status)}
+            </div>
+            <div class="card-body">
+              ${o.Status === 'ready' ? `
+                <div class="pickup-box" style="margin-bottom:16px;">
+                  <div class="pickup-label">Pickup Code</div>
+                  <div class="pickup-code">${o.PickupCode}</div>
+                  <div style="font-size:12px;color:var(--text2);">Show this at the stall</div>
+                </div>` : ''}
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;color:var(--text2);">
+                <span>Ordered: ${new Date(o.CreatedAt).toLocaleString('en-PH')}</span>
+                <span>Payment: ${(o.PaymentMethod||'').replace(/_/g,' ')}</span>
+              </div>
+              ${items.map(i => `
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+                  <span>${i.qty}× ${i.name}</span>
+                  <span style="font-weight:600;">${peso(i.subtotal)}</span>
+                </div>`).join('')}
+              <div style="display:flex;justify-content:space-between;font-weight:700;padding-top:10px;">
+                <span>Total</span><span style="color:var(--g800);">${peso(o.Total)}</span>
+              </div>
+              ${o.Notes ? `<p style="margin-top:12px;font-size:13px;color:var(--text2);">Note: ${o.Notes}</p>` : ''}
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">
+                ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="App.cancelOrder('${o.OrderID}')">Cancel Order</button>` : ''}
+                ${canRate ? `<button class="btn btn-outline btn-sm" onclick="App.openRatingModal('${o.StallID}','${o.OrderID}')">⭐ Rate Order</button>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    } catch { toast('Failed to load order.','error'); }
+  }
+
+  async function cancelOrder(orderId) {
+    if (!confirm('Cancel this order?')) return;
+    try {
+      const res = await call('cancelOrder', state.token, orderId);
+      if (res.success) { toast('Order cancelled.'); navigateTo('orders'); }
+      else toast(res.error,'error');
+    } catch { toast('Failed to cancel.','error'); }
+  }
+
+  // ================================================================
+  // CONCESSIONAIRE DASHBOARD
+  // ================================================================
+
+  async function renderConcDashboard() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;">${state.stallData?.StallName || 'My Stall'}</h2>
+            <p style="font-size:13px;color:var(--text2);">Today's Dashboard</p>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="App.openHoursModal()">🕐 Hours</button>
+        </div>
+        <div class="stats-grid" id="stats-grid"><div class="loader"><div class="spinner"></div></div></div>
+        <h3 style="font-size:15px;font-weight:700;margin:20px 0 10px;">Active Orders</h3>
+        <div id="active-orders"><div class="loader"><div class="spinner"></div></div></div>
+      </div>`;
+
+    try {
+      const [statsRes, ordersRes] = await Promise.all([
+        call('getDashboardStats', state.token),
+        call('getStallOrders', state.token, { status: null })
+      ]);
+
+      const s = statsRes.stats || {};
+      document.getElementById('stats-grid').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${s.totalOrdersToday||0}</div><div class="stat-label">Orders Today</div></div>
+        <div class="stat-card"><div class="stat-value">${s.pendingOrders||0}</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card"><div class="stat-value">${s.preparingOrders||0}</div><div class="stat-label">Preparing</div></div>
+        <div class="stat-card"><div class="stat-value">${s.readyOrders||0}</div><div class="stat-label">Ready</div></div>
+        <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(s.todayRevenue||0)}</div><div class="stat-label">Today's Revenue</div></div>`;
+
+      const active = (ordersRes.orders||[]).filter(o => !['completed','cancelled'].includes(o.Status));
+      document.getElementById('active-orders').innerHTML = active.length
+        ? active.map(o => concOrderCard(o)).join('')
+        : '<p style="color:var(--text3);padding:20px 0;text-align:center;">No active orders.</p>';
+    } catch { toast('Dashboard load error.','error'); }
+  }
+
+  function concOrderCard(o) {
+    const items = (o.Items||[]).map(i => `${i.qty}× ${i.name}`).join(', ');
+    const nextActions = {
+      pending:   [['confirmed','✅ Confirm'],['cancelled','❌ Cancel']],
+      confirmed: [['preparing','🍳 Start Preparing'],['cancelled','❌ Cancel']],
+      preparing: [['ready','🔔 Mark Ready']],
+      ready:     [['completed','✔ Complete']]
+    };
+    const actions = (nextActions[o.Status] || []).map(([s,l]) =>
+      `<button class="btn btn-primary btn-sm" onclick="App.updateStatus('${o.OrderID}','${s}')">${l}</button>`
+    ).join('');
+
+    return `
+      <div class="order-item" style="margin-bottom:10px;">
+        <div class="order-header">
+          <strong>${o.CustomerName}</strong>
+          ${statusBadge(o.Status)}
+          <span class="order-time">${relTime(o.CreatedAt)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">${items}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="order-id">${o.OrderID}</span>
+          <span style="background:var(--g100);color:var(--g800);font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;">Code: ${o.PickupCode}</span>
+          <span class="order-total">${peso(o.Total)}</span>
+          ${actions}
+        </div>
+      </div>`;
+  }
+
+  async function updateStatus(orderId, status, message) {
+    try {
+      const res = await call('updateOrderStatus', state.token, orderId, status, message||'');
+      if (res.success) { toast(`Status updated to ${status}.`); renderConcDashboard(); }
+      else toast(res.error,'error');
+    } catch { toast('Update failed.','error'); }
+  }
+
+  async function renderStallOrders() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="font-size:18px;font-weight:700;">Orders</h2>
+          <select class="form-control" style="width:140px;" id="orders-filter" onchange="App.filterStallOrders(this.value)">
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="preparing">Preparing</option>
+            <option value="ready">Ready</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div id="stall-orders-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>`;
+
+    await loadStallOrders(null);
+  }
+
+  async function loadStallOrders(statusFilter) {
+    try {
+      const res = await call('getStallOrders', state.token, statusFilter ? { status: statusFilter } : {});
+      const list = document.getElementById('stall-orders-list');
+      if (!list) return;
+      list.innerHTML = res.orders?.length
+        ? res.orders.map(o => concOrderCard(o)).join('')
+        : '<p style="color:var(--text3);text-align:center;padding:40px 0;">No orders found.</p>';
+    } catch { toast('Failed to load orders.','error'); }
+  }
+
+  function filterStallOrders(status) { loadStallOrders(status || null); }
+
+  // ================================================================
+  // CONCESSIONAIRE PRODUCTS
+  // ================================================================
+
+  async function renderConcProducts() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="font-size:18px;font-weight:700;">My Menu</h2>
+          <button class="btn btn-primary btn-sm" onclick="App.openProductModal()">+ Add Item</button>
+        </div>
+        <div id="products-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+      ${productFormModal()}`;
+
+    try {
+      const res = await call('getInventory', state.token);
+      const list = document.getElementById('products-list');
+      list.innerHTML = res.products?.length
+        ? `<div class="table-wrap"><table>
+            <tr><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th></tr>
+            ${res.products.map(p => `
+              <tr>
+                <td><strong>${p.Name}</strong><br><span style="font-size:12px;color:var(--text3);">${p.Description||''}</span></td>
+                <td>${p.Category||'-'}</td>
+                <td>${peso(p.Price)}</td>
+                <td>${p.Stock < 0 ? '∞' : p.Stock}</td>
+                <td>${statusBadge(p.ApprovalStatus)} ${p.IsAvailable ? '' : '<span class="badge badge-cancelled" style="margin-left:4px;">Hidden</span>'}</td>
+                <td class="td-actions">
+                  <button class="btn btn-ghost btn-sm" onclick="App.toggleAvailability('${p.ProductID}',${!p.IsAvailable})">${p.IsAvailable?'Hide':'Show'}</button>
+                  <button class="btn btn-danger btn-sm" onclick="App.deleteProduct('${p.ProductID}')">Delete</button>
+                </td>
+              </tr>`).join('')}
+          </table></div>`
+        : '<p style="color:var(--text3);text-align:center;padding:40px 0;">No products yet. Add your first menu item!</p>';
+    } catch { toast('Failed to load products.','error'); }
+  }
+
+  function productFormModal() {
+    return `
+      <div class="modal-overlay" id="modal-product">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Add Menu Item</h3>
+            <button class="modal-close" onclick="App.closeModal('modal-product')">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Name *</label><input class="form-control" id="p-name" placeholder="e.g. Spaghetti"></div>
+              <div class="form-group"><label class="form-label">Category *</label><input class="form-control" id="p-category" placeholder="e.g. Pasta, Drinks"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="p-desc" placeholder="Brief description"></div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Price (₱) *</label><input class="form-control" type="number" id="p-price" min="1" step="0.5"></div>
+              <div class="form-group"><label class="form-label">Stock (-1 = unlimited)</label><input class="form-control" type="number" id="p-stock" value="-1"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Image URL</label><input class="form-control" id="p-img" placeholder="https://..."></div>
+            <div class="alert alert-info" style="font-size:13px;">Your item will be reviewed by RESGO before appearing to customers.</div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-product')">Cancel</button>
+            <button class="btn btn-primary" id="save-product-btn" onclick="App.saveProduct()">Submit for Approval</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openProductModal() { openModal('modal-product'); }
+
+  async function saveProduct() {
+    const btn = document.getElementById('save-product-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('addProduct', state.token, {
+        name: document.getElementById('p-name').value,
+        category: document.getElementById('p-category').value,
+        description: document.getElementById('p-desc').value,
+        price: document.getElementById('p-price').value,
+        stock: document.getElementById('p-stock').value,
+        imageUrl: document.getElementById('p-img').value
+      });
+      if (res.success) { closeModal('modal-product'); toast('Submitted for approval!'); renderConcProducts(); }
+      else toast(res.error,'error');
+    } catch { toast('Failed to save.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  async function toggleAvailability(productId, available) {
+    const res = await call('toggleProductAvailability', state.token, productId, available).catch(()=>null);
+    if (res?.success) { toast(available ? 'Item visible.' : 'Item hidden.'); renderConcProducts(); }
+    else toast('Failed to update.','error');
+  }
+
+  async function deleteProduct(productId) {
+    if (!confirm('Delete this product?')) return;
+    const res = await call('deleteProduct', state.token, productId).catch(()=>null);
+    if (res?.success) { toast('Product deleted.'); renderConcProducts(); }
+    else toast('Failed to delete.','error');
+  }
+
+  async function openHoursModal() {
+    const hours = state.stallData?.OperatingHours || '';
+    const input = prompt('Enter operating hours (e.g. Mon-Fri 7:00 AM - 5:00 PM):', hours);
+    if (input === null) return;
+    const res = await call('setOperatingHours', state.token, input).catch(()=>null);
+    if (res?.success) { if(state.stallData) state.stallData.OperatingHours = input; toast('Hours updated!'); }
+    else toast('Failed to update hours.','error');
+  }
+
+  // ================================================================
+  // RATINGS
+  // ================================================================
+
+  function openRatingModal(stallId, orderId) {
+    const content = document.getElementById('main-content');
+    const existing = document.getElementById('modal-rating');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay open';
+    modal.id = 'modal-rating';
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header"><h3>Rate Your Order</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+        <div class="modal-body">
+          <p style="margin-bottom:16px;color:var(--text2);">How was your experience?</p>
+          <div style="display:flex;gap:4px;justify-content:center;margin-bottom:16px;" id="star-row">
+            ${Array.from({length:5},(_,i)=>`<button class="star-btn" data-star="${i+1}" onclick="App.selectStar(${i+1})">★</button>`).join('')}
+          </div>
+          <div class="form-group"><label class="form-label">Comment (optional)</label><textarea class="form-control" id="rating-comment" rows="3" placeholder="Tell us about your experience..."></textarea></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="document.getElementById('modal-rating').remove()">Cancel</button>
+          <button class="btn btn-gold" id="submit-rating-btn" onclick="App.submitRating('${stallId}','${orderId}')">Submit Rating</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    state._selectedStars = 0;
+  }
+
+  function selectStar(n) {
+    state._selectedStars = n;
+    document.querySelectorAll('.star-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.star) <= n));
+  }
+
+  async function submitRating(stallId, orderId) {
+    if (!state._selectedStars) { toast('Please select a star rating.','error'); return; }
+    const comment = document.getElementById('rating-comment')?.value;
+    const res = await call('submitRating', state.token, stallId, orderId, state._selectedStars, comment).catch(()=>null);
+    if (res?.success) { document.getElementById('modal-rating')?.remove(); toast('Thank you for your rating! ⭐'); renderMyOrders(); }
+    else toast(res?.error || 'Failed to submit rating.','error');
+  }
+
+  // ================================================================
+  // ADMIN DASHBOARD
+  // ================================================================
+
+  async function renderAdminDashboard() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">Admin Dashboard</h2>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">RESGO Overview</p>
+        <div class="stats-grid" id="admin-stats"><div class="loader"><div class="spinner"></div></div></div>
+        <div style="margin-top:20px;" id="pending-section"></div>
+      </div>`;
+
+    try {
+      const [statsRes, pendingRes] = await Promise.all([
+        call('getDashboardStats', state.token),
+        call('getPendingProducts', state.token)
+      ]);
+      const s = statsRes.stats || {};
+      document.getElementById('admin-stats').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${s.totalOrdersToday||0}</div><div class="stat-label">Orders Today</div></div>
+        <div class="stat-card"><div class="stat-value">${peso(s.todayRevenue||0)}</div><div class="stat-label" style="font-size:11px;">Today's Revenue</div></div>
+        <div class="stat-card"><div class="stat-value">${s.totalUsers||0}</div><div class="stat-label">Total Users</div></div>
+        <div class="stat-card"><div class="stat-value">${s.totalStalls||0}</div><div class="stat-label">Active Stalls</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${s.pendingApprovals?'var(--warn)':'var(--g800)'};">${s.pendingApprovals||0}</div><div class="stat-label">Pending Approvals</div></div>`;
+
+      const pending = pendingRes.products || [];
+      document.getElementById('pending-section').innerHTML = pending.length ? `
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:10px;">⏳ Pending Menu Approvals (${pending.length})</h3>
+        ${pending.map(p => `
+          <div class="order-item" style="margin-bottom:10px;">
+            <div class="order-header"><strong>${p.Name}</strong><span style="color:var(--text3);font-size:13px;">${p.StallName}</span></div>
+            <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">${p.Category} &nbsp;|&nbsp; ${peso(p.Price)}</div>
+            <div class="td-actions">
+              <button class="btn btn-primary btn-sm" onclick="App.approveProduct('${p.ProductID}',true)">✓ Approve</button>
+              <button class="btn btn-danger btn-sm" onclick="App.approveProduct('${p.ProductID}',false)">✕ Reject</button>
+            </div>
+          </div>`).join('')}` : '';
+    } catch { toast('Dashboard error.','error'); }
+  }
+
+  async function approveProduct(productId, approved) {
+    const reason = approved ? '' : prompt('Reason for rejection (optional):') || '';
+    const res = await call('approveProduct', state.token, productId, approved, reason).catch(()=>null);
+    if (res?.success) { toast(approved ? 'Product approved.' : 'Product rejected.'); renderAdminDashboard(); }
+    else toast(res?.error || 'Failed.','error');
+  }
+
+  async function renderAdminUsers() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="font-size:18px;font-weight:700;">Users</h2>
+          <button class="btn btn-primary btn-sm" onclick="App.openAddUserModal()">+ Add User</button>
+        </div>
+        <div id="users-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+      ${addUserModal()}`;
+
+    try {
+      const res = await call('getUsers', state.token);
+      document.getElementById('users-table').innerHTML = `
+        <div class="table-wrap"><table>
+          <tr><th>Name</th><th>Email</th><th>Role</th><th>ID Number</th><th>Status</th><th>Actions</th></tr>
+          ${(res.users||[]).map(u => `
+            <tr>
+              <td><strong>${u.Name}</strong></td>
+              <td style="font-size:13px;">${u.Email}</td>
+              <td>${u.Role}</td>
+              <td style="font-size:13px;">${u.IDNumber||'-'}</td>
+              <td>${statusBadge(u.Status === 'active' ? 'approved' : 'rejected')}</td>
+              <td><button class="btn btn-ghost btn-sm" onclick="App.deactivateUser('${u.UserID}','${u.Name}','${u.Status}')">${u.Status==='active'?'Deactivate':'Activate'}</button></td>
+            </tr>`).join('')}
+        </table></div>`;
+    } catch { toast('Failed to load users.','error'); }
+  }
+
+  function addUserModal() {
+    const roles = ['student','parent','partner','concessionaire','admin'];
+    return `
+      <div class="modal-overlay" id="modal-add-user">
+        <div class="modal">
+          <div class="modal-header"><h3>Add User</h3><button class="modal-close" onclick="App.closeModal('modal-add-user')">✕</button></div>
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="u-name" placeholder="Juan dela Cruz"></div>
+              <div class="form-group"><label class="form-label">Email *</label><input class="form-control" id="u-email" type="email" placeholder="user@dlsl.edu.ph"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Role *</label><select class="form-control" id="u-role">${roles.map(r=>`<option value="${r}">${r}</option>`).join('')}</select></div>
+              <div class="form-group"><label class="form-label">ID Number</label><input class="form-control" id="u-id" placeholder="Student/Employee ID"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="u-phone" placeholder="09XXXXXXXXX"></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-add-user')">Cancel</button>
+            <button class="btn btn-primary" id="save-user-btn" onclick="App.saveUser()">Add User</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openAddUserModal() { openModal('modal-add-user'); }
+
+  async function saveUser() {
+    const btn = document.getElementById('save-user-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('addUser', state.token, {
+        name: document.getElementById('u-name').value,
+        email: document.getElementById('u-email').value,
+        role: document.getElementById('u-role').value,
+        idNumber: document.getElementById('u-id').value,
+        phone: document.getElementById('u-phone').value
+      });
+      if (res.success) { closeModal('modal-add-user'); toast('User added!'); renderAdminUsers(); }
+      else toast(res.error,'error');
+    } catch { toast('Failed.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  async function deactivateUser(userId, name, currentStatus) {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    if (!confirm(`${newStatus === 'inactive' ? 'Deactivate' : 'Activate'} ${name}?`)) return;
+    const res = await call('updateUser', state.token, userId, { status: newStatus }).catch(()=>null);
+    if (res?.success) { toast('User updated.'); renderAdminUsers(); }
+    else toast('Failed.','error');
+  }
+
+  async function renderAdminStalls() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="font-size:18px;font-weight:700;">Concessionaires</h2>
+          <button class="btn btn-primary btn-sm" onclick="App.openAddStallModal()">+ Add Stall</button>
+        </div>
+        <div id="stalls-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+      ${addStallModal()}`;
+
+    try {
+      const stalls = await call('getConcessionaires', false);
+      document.getElementById('stalls-table').innerHTML = `
+        <div class="table-wrap"><table>
+          <tr><th>Stall Name</th><th>Email</th><th>Location</th><th>Rating</th><th>Status</th><th>Actions</th></tr>
+          ${stalls.map(s => `
+            <tr>
+              <td><strong>${s.StallName}</strong></td>
+              <td style="font-size:13px;">${s.Email}</td>
+              <td>${s.Location||'-'}</td>
+              <td>${stars(Math.round(s.Rating||0))} ${s.Rating ? Number(s.Rating).toFixed(1) : '-'}</td>
+              <td>${statusBadge(s.ApprovalStatus)} ${statusBadge(s.Status === 'active' ? 'approved' : 'rejected')}</td>
+              <td class="td-actions">
+                ${s.ApprovalStatus === 'pending' ? `<button class="btn btn-primary btn-sm" onclick="App.approveStall('${s.StallID}',true)">Approve</button>` : ''}
+                ${s.Status === 'active'
+                  ? `<button class="btn btn-danger btn-sm" onclick="App.approveStall('${s.StallID}',false)">Suspend</button>`
+                  : `<button class="btn btn-outline btn-sm" onclick="App.approveStall('${s.StallID}',true)">Activate</button>`}
+              </td>
+            </tr>`).join('')}
+        </table></div>`;
+    } catch { toast('Failed to load stalls.','error'); }
+  }
+
+  function addStallModal() {
+    return `
+      <div class="modal-overlay" id="modal-add-stall">
+        <div class="modal">
+          <div class="modal-header"><h3>Add Concessionaire</h3><button class="modal-close" onclick="App.closeModal('modal-add-stall')">✕</button></div>
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Stall Name *</label><input class="form-control" id="s-name" placeholder="e.g. Jollibee Kiosk"></div>
+              <div class="form-group"><label class="form-label">Email *</label><input class="form-control" id="s-email" type="email" placeholder="stall@dlsl.edu.ph"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Location</label><input class="form-control" id="s-loc" placeholder="e.g. Canteen Bldg, 2F"></div>
+              <div class="form-group"><label class="form-label">Operating Hours</label><input class="form-control" id="s-hours" placeholder="Mon-Fri 7AM-5PM"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Description</label><input class="form-control" id="s-desc" placeholder="Brief description of stall"></div>
+            <div class="form-group"><label class="form-label">Logo URL</label><input class="form-control" id="s-logo" placeholder="https://..."></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-add-stall')">Cancel</button>
+            <button class="btn btn-primary" id="save-stall-btn" onclick="App.saveStall()">Add Stall</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openAddStallModal() { openModal('modal-add-stall'); }
+
+  async function saveStall() {
+    const btn = document.getElementById('save-stall-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('addConcessionaire', state.token, {
+        stallName: document.getElementById('s-name').value,
+        email: document.getElementById('s-email').value,
+        location: document.getElementById('s-loc').value,
+        operatingHours: document.getElementById('s-hours').value,
+        description: document.getElementById('s-desc').value,
+        logoUrl: document.getElementById('s-logo').value
+      });
+      if (res.success) { closeModal('modal-add-stall'); toast('Stall added!'); renderAdminStalls(); }
+      else toast(res.error,'error');
+    } catch { toast('Failed.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  async function approveStall(stallId, approve) {
+    const res = await call('approveConcessionaire', state.token, stallId, approve).catch(()=>null);
+    if (res?.success) { toast(approve ? 'Stall approved.' : 'Stall suspended.'); renderAdminStalls(); }
+    else toast('Failed.','error');
+  }
+
+  async function renderAdminReports() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    const today = new Date().toISOString().substring(0,10);
+    const startOfMonth = today.substring(0,7) + '-01';
+
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">Sales Reports</h2>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="rep-start" value="${startOfMonth}"></div>
+              <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="rep-end" value="${today}"></div>
+            </div>
+            <button class="btn btn-primary" onclick="App.loadReport()">Generate Report</button>
+          </div>
+        </div>
+        <div id="report-content"></div>
+      </div>`;
+  }
+
+  async function loadReport() {
+    const start = document.getElementById('rep-start').value;
+    const end   = document.getElementById('rep-end').value;
+    const el    = document.getElementById('report-content');
+    el.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+    try {
+      const res = await call('getSalesReport', state.token, start, end);
+      if (!res.success) { el.innerHTML = `<div class="alert alert-danger">${res.error}</div>`; return; }
+
+      const r = res.report;
+      el.innerHTML = `
+        <div class="stats-grid" style="margin-bottom:16px;">
+          <div class="stat-card"><div class="stat-value">${r.totalOrders}</div><div class="stat-label">Total Orders</div></div>
+          <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(r.totalRevenue)}</div><div class="stat-label">Total Revenue</div></div>
+          <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(r.averageOrderValue)}</div><div class="stat-label">Avg Order Value</div></div>
+        </div>
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-header"><h2>Top Products</h2></div>
+          <div class="card-body">
+            <div class="table-wrap"><table>
+              <tr><th>#</th><th>Product</th><th>Stall</th><th>Qty Sold</th><th>Revenue</th></tr>
+              ${r.topProducts.map((p,i) => `<tr><td>${i+1}</td><td>${p.name}</td><td style="font-size:12px;">${p.stall}</td><td><strong>${p.qty}</strong></td><td>${peso(p.revenue)}</td></tr>`).join('')}
+            </table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Revenue by Stall</h2></div>
+          <div class="card-body">
+            <div class="table-wrap"><table>
+              <tr><th>Stall</th><th>Orders</th><th>Revenue</th></tr>
+              ${Object.entries(r.byStall).map(([name,d]) => `<tr><td>${name}</td><td>${d.orders}</td><td>${peso(d.revenue)}</td></tr>`).join('')}
+            </table></div>
+          </div>
+        </div>`;
+    } catch { el.innerHTML = '<div class="alert alert-danger">Failed to generate report.</div>'; }
+  }
+
+  // ================================================================
+  // PROFILE
+  // ================================================================
+
+  function renderProfile() {
+    showPage('main');
+    const u = state.user || {};
+    document.getElementById('main-content').innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;">My Profile</h2>
+        <div class="card">
+          <div style="background:linear-gradient(135deg,var(--g900),var(--g700));padding:32px;text-align:center;">
+            <div style="width:72px;height:72px;border-radius:50%;background:var(--gold);margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--g900);font-weight:800;">
+              ${(u.name||'?')[0].toUpperCase()}
+            </div>
+            <div style="color:#fff;font-size:18px;font-weight:700;margin-top:12px;">${u.name}</div>
+            <div style="color:#a5d6a7;font-size:14px;">${u.email}</div>
+            <div style="margin-top:8px;">${statusBadge('approved')} <span style="color:#fff;font-size:13px;margin-left:4px;">${u.role}</span></div>
+          </div>
+          <div class="card-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div><div class="form-label">ID Number</div><div style="font-weight:600;">${u.idNumber||'—'}</div></div>
+              <div><div class="form-label">Phone</div><div style="font-weight:600;">${u.phone||'—'}</div></div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-danger btn-block" style="margin-top:20px;" onclick="App.doLogout()">Sign Out</button>
+      </div>`;
+  }
+
+  // ================================================================
+  // Public API
+  // ================================================================
+  return {
+    init, submitEmail, submitOTP, resendOTP, doLogout, renderLoginStep1,
+    navigateTo, doSearch, filterByCategory,
+    addToCart, changeQty, placeOrder,
+    cancelOrder, openRatingModal, selectStar, submitRating,
+    updateStatus, filterStallOrders,
+    openProductModal, saveProduct, toggleAvailability, deleteProduct, openHoursModal,
+    approveProduct,
+    openAddUserModal, saveUser, deactivateUser,
+    openAddStallModal, saveStall, approveStall,
+    loadReport,
+    openModal, closeModal
+  };
+})();
+
+document.addEventListener('DOMContentLoaded', App.init);
+</script>

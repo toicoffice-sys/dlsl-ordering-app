@@ -1,0 +1,292 @@
+// ============================================================
+// DLSL Ordering App — Code.js
+// Main entry point: routing, auth, sessions, utilities
+// ============================================================
+
+const SPREADSHEET_ID = '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI';
+
+const SHEETS = {
+  USERS:           'Users',
+  CONCESSIONAIRES: 'Concessionaires',
+  PRODUCTS:        'Products',
+  ORDERS:          'Orders',
+  ORDER_ITEMS:     'OrderItems',
+  RATINGS:         'Ratings',
+  SESSIONS:        'Sessions',
+  OTPS:            'OTPs',
+  ANNOUNCEMENTS:   'Announcements'
+};
+
+const ROLES = {
+  STUDENT:       'student',
+  PARENT:        'parent',
+  PARTNER:       'partner',
+  CONCESSIONAIRE:'concessionaire',
+  ADMIN:         'admin'
+};
+
+const ORDER_STATUS = {
+  PENDING:    'pending',
+  CONFIRMED:  'confirmed',
+  PREPARING:  'preparing',
+  READY:      'ready',
+  COMPLETED:  'completed',
+  CANCELLED:  'cancelled'
+};
+
+const APPROVAL = {
+  PENDING:  'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
+
+// ------------------------------------------------------------
+// Web app entry
+// ------------------------------------------------------------
+
+function doGet(e) {
+  return HtmlService.createTemplateFromFile('index')
+    .evaluate()
+    .setTitle('DLSL Ordering App')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// ------------------------------------------------------------
+// Authentication — Email OTP
+// ------------------------------------------------------------
+
+function requestAccess(email) {
+  email = (email || '').toLowerCase().trim();
+  if (!email) return { success: false, error: 'Email is required.' };
+
+  const usersSheet = getSheet(SHEETS.USERS);
+  const rows = usersSheet.getDataRange().getValues();
+  let user = null;
+
+  for (let i = 1; i < rows.length; i++) {
+    if ((rows[i][2] || '').toLowerCase() === email) {
+      user = { id: rows[i][0], name: rows[i][1], email: rows[i][2], role: rows[i][3], status: rows[i][6] };
+      break;
+    }
+  }
+
+  if (!user) return { success: false, error: 'Email not registered. Contact RESGO to create your account.' };
+  if (user.status !== 'active') return { success: false, error: 'Account is inactive. Please contact RESGO.' };
+
+  // Rate-limit: 60 s between sends
+  const otpSheet = getSheet(SHEETS.OTPS);
+  const otpRows = otpSheet.getDataRange().getValues();
+  const now = new Date();
+
+  for (let i = 1; i < otpRows.length; i++) {
+    if ((otpRows[i][0] || '').toLowerCase() === email) {
+      const sentAt = new Date(otpRows[i][4] || 0);
+      const diff = (now - sentAt) / 1000;
+      if (diff < 60) return { success: false, error: `Wait ${Math.ceil(60 - diff)}s before requesting again.` };
+      otpSheet.deleteRow(i + 1);
+      break;
+    }
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expires = new Date(now.getTime() + 10 * 60 * 1000);
+  otpSheet.appendRow([email, otp, expires.toISOString(), 0, now.toISOString()]);
+
+  sendOTPEmail(user.name, email, otp);
+  return { success: true, name: user.name };
+}
+
+function verifyOTP(email, code) {
+  email = (email || '').toLowerCase().trim();
+  code  = (code  || '').trim();
+
+  const otpSheet = getSheet(SHEETS.OTPS);
+  const otpRows  = otpSheet.getDataRange().getValues();
+  const now      = new Date();
+
+  for (let i = 1; i < otpRows.length; i++) {
+    if ((otpRows[i][0] || '').toLowerCase() !== email) continue;
+
+    const storedOTP = otpRows[i][1].toString();
+    const expires   = new Date(otpRows[i][2]);
+    const attempts  = parseInt(otpRows[i][3]) || 0;
+
+    if (attempts >= 5) {
+      otpSheet.deleteRow(i + 1);
+      return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
+    }
+    if (now > expires) {
+      otpSheet.deleteRow(i + 1);
+      return { success: false, error: 'OTP expired. Please request a new one.' };
+    }
+    if (storedOTP !== code) {
+      otpSheet.getRange(i + 1, 4).setValue(attempts + 1);
+      return { success: false, error: `Invalid OTP. ${4 - attempts} attempt(s) left.` };
+    }
+
+    otpSheet.deleteRow(i + 1);
+
+    const usersSheet = getSheet(SHEETS.USERS);
+    const rows = usersSheet.getDataRange().getValues();
+    let userData = null;
+
+    for (let j = 1; j < rows.length; j++) {
+      if ((rows[j][2] || '').toLowerCase() === email) {
+        userData = { id: rows[j][0], name: rows[j][1], email: rows[j][2],
+                     role: rows[j][3], idNumber: rows[j][4], phone: rows[j][5] };
+        break;
+      }
+    }
+    if (!userData) return { success: false, error: 'User not found.' };
+
+    const token = createSession(email, userData.role, userData);
+
+    // Attach stall data for concessionaires
+    let stallData = null;
+    if (userData.role === ROLES.CONCESSIONAIRE) {
+      stallData = getStallByEmail(email);
+    }
+
+    return { success: true, token, user: userData, stallData };
+  }
+
+  return { success: false, error: 'OTP not found. Please request a new one.' };
+}
+
+function resendOTP(email) {
+  return requestAccess(email);
+}
+
+function logout(token) {
+  if (!token) return { success: false };
+  const sheet = getSheet(SHEETS.SESSIONS);
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] === token) { sheet.deleteRow(i + 1); return { success: true }; }
+  }
+  return { success: false };
+}
+
+// ------------------------------------------------------------
+// Session management
+// ------------------------------------------------------------
+
+function createSession(email, role, userData) {
+  const token   = Utilities.getUuid();
+  const expires = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 h
+  getSheet(SHEETS.SESSIONS).appendRow([token, email, role, JSON.stringify(userData), expires.toISOString()]);
+  return token;
+}
+
+function validateSession(token) {
+  if (!token) return null;
+  const sheet = getSheet(SHEETS.SESSIONS);
+  const rows  = sheet.getDataRange().getValues();
+  const now   = new Date();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] !== token) continue;
+    const expires = new Date(rows[i][4]);
+    if (expires <= now) { sheet.deleteRow(i + 1); return null; }
+    return { email: rows[i][1], role: rows[i][2], userData: JSON.parse(rows[i][3]) };
+  }
+  return null;
+}
+
+// ------------------------------------------------------------
+// Bootstrap / init
+// ------------------------------------------------------------
+
+function initializeApp() {
+  Object.values(SHEETS).forEach(name => getSheet(name));
+
+  const usersSheet = getSheet(SHEETS.USERS);
+  if (usersSheet.getLastRow() <= 1) {
+    usersSheet.appendRow([
+      genId('USR'), 'RESGO Admin', 'resgo@dlsl.edu.ph',
+      ROLES.ADMIN, 'ADMIN-001', '', 'active', now()
+    ]);
+  }
+  return { success: true, message: 'App initialized.' };
+}
+
+function getBootData(token) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+
+  const concessionaires = getConcessionaires();
+  const announcements   = getAnnouncements();
+
+  let stallData = null;
+  if (session.role === ROLES.CONCESSIONAIRE) {
+    stallData = getStallByEmail(session.email);
+  }
+
+  return { success: true, user: session.userData, role: session.role,
+           concessionaires, announcements, stallData };
+}
+
+// ------------------------------------------------------------
+// Shared helpers
+// ------------------------------------------------------------
+
+function getSheet(name) {
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let   sheet = ss.getSheetByName(name);
+  if (!sheet) { sheet = ss.insertSheet(name); initSheetHeaders(sheet, name); }
+  return sheet;
+}
+
+function initSheetHeaders(sheet, name) {
+  const map = {
+    [SHEETS.USERS]:           ['UserID','Name','Email','Role','IDNumber','Phone','Status','CreatedAt'],
+    [SHEETS.CONCESSIONAIRES]: ['StallID','Email','StallName','Location','Description','OperatingHours','Status','Rating','TotalRatings','LogoURL','ApprovalStatus','CreatedAt'],
+    [SHEETS.PRODUCTS]:        ['ProductID','StallID','StallName','Name','Category','Description','Price','Stock','ImageURL','IsAvailable','ApprovalStatus','CreatedAt'],
+    [SHEETS.ORDERS]:          ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items','Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'],
+    [SHEETS.RATINGS]:         ['RatingID','CustomerEmail','StallID','OrderID','Stars','Comment','CreatedAt'],
+    [SHEETS.SESSIONS]:        ['Token','Email','Role','UserData','ExpiresAt'],
+    [SHEETS.OTPS]:            ['Email','OTP','ExpiresAt','Attempts','SentAt'],
+    [SHEETS.ANNOUNCEMENTS]:   ['AnnID','Title','Body','Author','CreatedAt','ExpiresAt']
+  };
+  const h = map[name];
+  if (!h) return;
+  sheet.appendRow(h);
+  sheet.getRange(1, 1, 1, h.length)
+    .setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold');
+}
+
+function genId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
+}
+
+function now() { return new Date().toISOString(); }
+
+function sheetToObjects(sheet) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  const headers = data[0];
+  return data.slice(1).map(row =>
+    Object.fromEntries(headers.map((h, i) => [h, row[i]]))
+  );
+}
+
+function getStallByEmail(email) {
+  const rows = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
+  return rows.find(r => (r.Email || '').toLowerCase() === email.toLowerCase()) || null;
+}
+
+function getConcessionaires(activeOnly = true) {
+  const rows = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
+  return activeOnly ? rows.filter(r => r.Status === 'active' && r.ApprovalStatus === APPROVAL.APPROVED) : rows;
+}
+
+function getAnnouncements() {
+  const rows = sheetToObjects(getSheet(SHEETS.ANNOUNCEMENTS));
+  const now_ = new Date();
+  return rows.filter(r => !r.ExpiresAt || new Date(r.ExpiresAt) > now_);
+}
