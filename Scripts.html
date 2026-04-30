@@ -11,7 +11,8 @@ const App = (() => {
     cart: [], cartStallId: null, cartStallName: null,
     view: 'login', subview: null,
     concessionaires: [], products: [], orders: [],
-    currentStall: null, selectedOrder: null
+    currentStall: null, selectedOrder: null,
+    pendingEmail: null, pendingName: null
   };
 
   // ---- Persist token ----
@@ -94,7 +95,7 @@ const App = (() => {
       clearToken();
     }
     showPage('login');
-    renderLoginStep1();
+    showEmailStep();
   }
 
   function bootSession(res) {
@@ -112,108 +113,26 @@ const App = (() => {
     navigateTo('home');
   }
 
-  // Step 1 — email input
-  function renderLoginStep1(error) {
-    const right = document.getElementById('login-right');
-    right.innerHTML = `
-      <div style="max-width:360px;width:100%;margin:0 auto;">
-        <!-- Logo mark -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:40px;">
-          <div style="width:42px;height:42px;background:var(--g900);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--gold);box-shadow:0 4px 12px rgba(27,94,32,.3);">D</div>
-          <div style="font-size:17px;font-weight:800;color:var(--text);">DLSL <span style="color:var(--g700);">Order</span></div>
-        </div>
-
-        <h1 style="font-size:30px;font-weight:900;color:var(--text);margin-bottom:6px;line-height:1.15;">Sign in</h1>
-        <p style="color:var(--text2);font-size:15px;margin-bottom:28px;">Enter your DLSL email to continue.</p>
-
-        ${error ? `<div class="alert alert-danger" style="margin-bottom:20px;">⚠ ${error}</div>` : ''}
-
-        <div class="form-group">
-          <label class="form-label" style="font-size:13px;">Email address</label>
-          <input type="email" class="form-control" id="login-email"
-            placeholder="yourname@dlsl.edu.ph"
-            autocomplete="email"
-            style="padding:14px 16px;font-size:15px;border-radius:10px;">
-        </div>
-
-        <button class="btn btn-primary btn-block" id="login-submit-btn"
-          onclick="App.submitEmail()"
-          style="padding:15px;font-size:15px;border-radius:10px;margin-bottom:24px;justify-content:center;">
-          Continue &nbsp;→
-        </button>
-
-        <div style="border-top:1px solid var(--border);padding-top:24px;">
-          <p style="font-size:13px;color:var(--text3);text-align:center;line-height:1.6;">
-            Don't have an account?<br>
-            <span style="color:var(--g700);font-weight:600;">Contact RESGO</span> to register.
-          </p>
-        </div>
-      </div>`;
-    document.getElementById('login-email')?.focus();
+  // Show email step (step 1)
+  function showEmailStep() {
+    document.getElementById('login-step-email').style.display = '';
+    document.getElementById('login-step-otp').style.display = 'none';
+    document.getElementById('login-error-box').innerHTML = '';
+    const emailInput = document.getElementById('login-email');
+    emailInput.value = '';
+    emailInput.onkeydown = e => { if (e.key === 'Enter') submitEmail(); };
+    emailInput.focus();
   }
 
-  async function submitEmail() {
-    const email = document.getElementById('login-email')?.value.trim();
-    if (!email) { toast('Please enter your email.','error'); return; }
-
-    const btn = document.getElementById('login-submit-btn');
-    setLoading(btn, true);
-    try {
-      const res = await call('requestAccess', email);
-      if (res.success) {
-        renderLoginStep2(email, res.name);
-      } else {
-        renderLoginStep1(res.error);
-      }
-    } catch (e) { renderLoginStep1('Connection error. Please try again.'); }
-    finally { setLoading(btn, false); }
-  }
-
-  // Step 2 — OTP
-  function renderLoginStep2(email, name, error) {
-    const right = document.getElementById('login-right');
-    right.innerHTML = `
-      <div style="max-width:360px;width:100%;margin:0 auto;">
-        <!-- Logo mark -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:40px;">
-          <div style="width:42px;height:42px;background:var(--g900);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--gold);box-shadow:0 4px 12px rgba(27,94,32,.3);">D</div>
-          <div style="font-size:17px;font-weight:800;color:var(--text);">DLSL <span style="color:var(--g700);">Order</span></div>
-        </div>
-
-        <button onclick="App.renderLoginStep1()" style="background:none;border:none;color:var(--text3);font-weight:600;font-size:13px;cursor:pointer;padding:0;margin-bottom:24px;display:flex;align-items:center;gap:6px;font-family:var(--font);">
-          ← Back
-        </button>
-
-        <h1 style="font-size:30px;font-weight:900;color:var(--text);margin-bottom:8px;line-height:1.15;">Enter the code</h1>
-        <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-bottom:6px;">
-          We sent a 6-digit code to
-        </p>
-        <p style="font-weight:700;font-size:15px;color:var(--g800);margin-bottom:24px;">${email}</p>
-
-        ${error ? `<div class="alert alert-danger" style="margin-bottom:16px;">⚠ ${error}</div>` : ''}
-
-        <div class="otp-group" id="otp-group">
-          ${Array.from({length:6}, (_,i) => `<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
-        </div>
-
-        <button class="btn btn-primary btn-block" id="otp-submit-btn"
-          onclick="App.submitOTP('${email}')"
-          style="padding:15px;font-size:15px;border-radius:10px;margin-bottom:16px;justify-content:center;">
-          Verify &amp; Sign In
-        </button>
-
-        <div style="text-align:center;">
-          <button class="btn btn-ghost btn-sm" id="resend-btn"
-            onclick="App.resendOTP('${email}','${name}')"
-            style="font-size:13px;">
-            Didn't receive it? Resend code
-          </button>
-        </div>
-
-        <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;line-height:1.6;">
-          Code expires in 10 minutes.<br>Never share this code with anyone.
-        </p>
-      </div>`;
+  // Show OTP step (step 2)
+  function showOTPStep(email, name) {
+    state.pendingEmail = email;
+    state.pendingName  = name;
+    document.getElementById('otp-email-display').textContent = email;
+    document.getElementById('otp-error-box').innerHTML = '';
+    for (let i = 0; i < 6; i++) { const el = document.getElementById(`otp-${i}`); if (el) el.value = ''; }
+    document.getElementById('login-step-email').style.display = 'none';
+    document.getElementById('login-step-otp').style.display = '';
     setupOTPInputs();
   }
 
@@ -221,27 +140,53 @@ const App = (() => {
     for (let i = 0; i < 6; i++) {
       const el = document.getElementById(`otp-${i}`);
       if (!el) continue;
-      el.addEventListener('input', e => {
+      const clone = el.cloneNode(true);
+      el.parentNode.replaceChild(clone, el);
+      const fresh = document.getElementById(`otp-${i}`);
+      fresh.addEventListener('input', e => {
         e.target.value = e.target.value.replace(/\D/g,'').slice(0,1);
         if (e.target.value && i < 5) document.getElementById(`otp-${i+1}`)?.focus();
       });
-      el.addEventListener('keydown', e => {
+      fresh.addEventListener('keydown', e => {
         if (e.key === 'Backspace' && !e.target.value && i > 0) document.getElementById(`otp-${i-1}`)?.focus();
       });
-      el.addEventListener('paste', e => {
+      fresh.addEventListener('paste', e => {
         e.preventDefault();
         const digits = (e.clipboardData.getData('text').replace(/\D/g,'')).slice(0,6);
-        digits.split('').forEach((d,j) => { const inp = document.getElementById(`otp-${j}`); if(inp) inp.value = d; });
+        digits.split('').forEach((d,j) => { const inp = document.getElementById(`otp-${j}`); if (inp) inp.value = d; });
         document.getElementById(`otp-${Math.min(digits.length, 5)}`)?.focus();
       });
     }
     document.getElementById('otp-0')?.focus();
   }
 
-  async function submitOTP(email) {
-    const code = Array.from({length:6}, (_,i) => document.getElementById(`otp-${i}`)?.value || '').join('');
+  async function submitEmail() {
+    const email = document.getElementById('login-email')?.value.trim();
+    if (!email) { toast('Please enter your email.','error'); return; }
+
+    const errBox = document.getElementById('login-error-box');
+    errBox.innerHTML = '';
+
+    const btn = document.getElementById('login-submit-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('requestAccess', email);
+      if (res.success) {
+        showOTPStep(email, res.name);
+      } else {
+        errBox.innerHTML = `<div class="lf-error">${res.error}</div>`;
+      }
+    } catch { errBox.innerHTML = `<div class="lf-error">Connection error. Please try again.</div>`; }
+    finally { setLoading(btn, false); }
+  }
+
+  async function doVerifyOTP() {
+    const email = state.pendingEmail;
+    const code  = Array.from({length:6}, (_,i) => document.getElementById(`otp-${i}`)?.value || '').join('');
     if (code.length < 6) { toast('Enter all 6 digits.','error'); return; }
 
+    const errBox = document.getElementById('otp-error-box');
+    errBox.innerHTML = '';
     const btn = document.getElementById('otp-submit-btn');
     setLoading(btn, true);
     try {
@@ -251,31 +196,39 @@ const App = (() => {
         state.token = res.token;
         bootSession(res);
       } else {
-        renderLoginStep2(email, '', res.error);
+        errBox.innerHTML = `<div class="lf-error">${res.error}</div>`;
       }
     } catch { toast('Connection error. Please try again.','error'); }
     finally { setLoading(btn, false); }
   }
 
-  async function resendOTP(email, name) {
+  async function doResendOTP() {
     const btn = document.getElementById('resend-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
     try {
-      const res = await call('resendOTP', email);
-      if (res.success) { toast('New OTP sent!','success'); renderLoginStep2(email, name || res.name); }
-      else { toast(res.error,'error'); if(btn){btn.disabled=false;btn.textContent='Resend OTP';} }
-    } catch { toast('Connection error.','error'); if(btn){btn.disabled=false;btn.textContent='Resend OTP';} }
+      const res = await call('resendOTP', state.pendingEmail);
+      if (res.success) {
+        toast('New OTP sent!','success');
+        for (let i = 0; i < 6; i++) { const el = document.getElementById(`otp-${i}`); if (el) el.value = ''; }
+        document.getElementById('otp-error-box').innerHTML = '';
+        document.getElementById('otp-0')?.focus();
+      } else { toast(res.error,'error'); }
+    } catch { toast('Connection error.','error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Resend OTP'; } }
   }
+
+  // Legacy alias kept in case any inline onclick references it
+  function renderLoginStep1() { showEmailStep(); }
 
   async function doLogout() {
     if (state.token) await call('logout', state.token).catch(()=>{});
-    state = { token:null, user:null, role:null, stallData:null, cart:[], cartStallId:null, cartStallName:null, view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null };
+    state = { token:null, user:null, role:null, stallData:null, cart:[], cartStallId:null, cartStallName:null, view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null, pendingEmail:null, pendingName:null };
     clearToken();
     document.getElementById('main-nav').style.display = 'none';
     document.getElementById('bottom-nav').style.display = 'none';
     document.getElementById('topnav-cart').style.display = '';
     showPage('login');
-    renderLoginStep1();
+    showEmailStep();
   }
 
   // ================================================================
@@ -1493,7 +1446,7 @@ const App = (() => {
   // Public API
   // ================================================================
   return {
-    init, submitEmail, submitOTP, resendOTP, doLogout, renderLoginStep1,
+    init, submitEmail, doVerifyOTP, doResendOTP, showEmailStep, doLogout,
     navigateTo, doSearch, filterByCategory,
     addToCart, changeQty, placeOrder,
     cancelOrder, openRatingModal, selectStar, submitRating,
