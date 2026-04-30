@@ -120,7 +120,8 @@ var App = (() => {
     document.getElementById('login-error-box').innerHTML = '';
     const emailInput = document.getElementById('login-email');
     emailInput.value = '';
-    emailInput.onkeydown = e => { if (e.key === 'Enter') submitEmail(); };
+    emailInput.onkeydown = function(e) { if (e.key === 'Enter') submitEmail(); };
+    document.getElementById('login-submit-btn').onclick = submitEmail;
     emailInput.focus();
   }
 
@@ -130,9 +131,12 @@ var App = (() => {
     state.pendingName  = name;
     document.getElementById('otp-email-display').textContent = email;
     document.getElementById('otp-error-box').innerHTML = '';
-    for (let i = 0; i < 6; i++) { const el = document.getElementById(`otp-${i}`); if (el) el.value = ''; }
+    for (let i = 0; i < 6; i++) { var el = document.getElementById('otp-' + i); if (el) el.value = ''; }
     document.getElementById('login-step-email').style.display = 'none';
     document.getElementById('login-step-otp').style.display = '';
+    document.getElementById('otp-submit-btn').onclick = doVerifyOTP;
+    document.getElementById('resend-btn').onclick = doResendOTP;
+    document.getElementById('otp-back-btn').onclick = showEmailStep;
     setupOTPInputs();
   }
 
@@ -1465,8 +1469,8 @@ var App = (() => {
   };
 })();
 
-// GAS HtmlService inlines scripts after the DOM is built, so DOMContentLoaded
-// may have already fired. Use readyState check to handle both cases.
+window.App = App;
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', App.init);
 } else {
