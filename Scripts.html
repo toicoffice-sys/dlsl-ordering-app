@@ -95,7 +95,7 @@ var App = (() => {
       clearToken();
     }
     showPage('login');
-    showEmailStep();
+    renderLoginStep1();
   }
 
   function bootSession(res) {
@@ -113,120 +113,126 @@ var App = (() => {
     navigateTo('home');
   }
 
-  // Show email step (step 1)
-  function showEmailStep() {
-    document.getElementById('login-step-email').style.display = '';
-    document.getElementById('login-step-otp').style.display = 'none';
-    document.getElementById('login-error-box').innerHTML = '';
-    const emailInput = document.getElementById('login-email');
-    emailInput.value = '';
-    emailInput.onkeydown = function(e) { if (e.key === 'Enter') submitEmail(); };
-    document.getElementById('login-submit-btn').onclick = submitEmail;
-    emailInput.focus();
+  // Step 1 — inject email form into #login-right
+  function renderLoginStep1(error) {
+    document.getElementById('login-right').innerHTML = `
+      <div class="login-form-wrap">
+        <div class="lf-logo">
+          <div class="lf-logo-icon">D</div>
+          <div class="lf-logo-text">DLSL <span>Order</span></div>
+        </div>
+        <h1 class="lf-title">Sign in</h1>
+        <p class="lf-sub">Enter your DLSL email address to continue.</p>
+        ${error ? `<div class="lf-error">${error}</div>` : ''}
+        <div class="lf-group">
+          <label class="lf-label">Email address</label>
+          <input type="email" class="lf-input" id="login-email"
+            placeholder="yourname@dlsl.edu.ph" autocomplete="email">
+        </div>
+        <button class="lf-btn" id="login-submit-btn" onclick="App.submitEmail()">
+          Generate OTP &rarr;
+        </button>
+        <p class="lf-footer">Don't have an account?
+          <strong style="color:#2E7D32;">Contact RESGO</strong> to register.</p>
+      </div>`;
+    const inp = document.getElementById('login-email');
+    if (inp) { inp.addEventListener('keydown', function(e){ if(e.key==='Enter') App.submitEmail(); }); inp.focus(); }
   }
 
-  // Show OTP step (step 2)
-  function showOTPStep(email, name) {
-    state.pendingEmail = email;
-    state.pendingName  = name;
-    document.getElementById('otp-email-display').textContent = email;
-    document.getElementById('otp-error-box').innerHTML = '';
-    for (let i = 0; i < 6; i++) { var el = document.getElementById('otp-' + i); if (el) el.value = ''; }
-    document.getElementById('login-step-email').style.display = 'none';
-    document.getElementById('login-step-otp').style.display = '';
-    document.getElementById('otp-submit-btn').onclick = doVerifyOTP;
-    document.getElementById('resend-btn').onclick = doResendOTP;
-    document.getElementById('otp-back-btn').onclick = showEmailStep;
+  // Step 2 — inject OTP form into #login-right
+  function renderLoginStep2(email, name, error) {
+    document.getElementById('login-right').innerHTML = `
+      <div class="login-form-wrap">
+        <div class="lf-logo">
+          <div class="lf-logo-icon">D</div>
+          <div class="lf-logo-text">DLSL <span>Order</span></div>
+        </div>
+        <button class="lf-back" onclick="App.renderLoginStep1()">&#8592; Back</button>
+        <h1 class="lf-title">Enter the code</h1>
+        <p class="lf-sub">We sent a 6-digit code to</p>
+        <p class="lf-email-display">${email}</p>
+        ${error ? `<div class="lf-error">${error}</div>` : ''}
+        <div class="otp-group" id="otp-group">
+          ${[0,1,2,3,4,5].map(i=>`<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
+        </div>
+        <button class="lf-btn" id="otp-submit-btn" onclick="App.submitOTP('${email}')">
+          Verify &amp; Sign In
+        </button>
+        <div style="text-align:center;margin-top:14px;">
+          <button class="lf-resend" id="resend-btn" onclick="App.resendOTP('${email}','${name}')">
+            Didn't receive it? Resend code
+          </button>
+        </div>
+        <p class="lf-footer">Code expires in 10 minutes. Never share it with anyone.</p>
+      </div>`;
     setupOTPInputs();
   }
 
   function setupOTPInputs() {
-    for (let i = 0; i < 6; i++) {
-      const el = document.getElementById(`otp-${i}`);
-      if (!el) continue;
-      const clone = el.cloneNode(true);
-      el.parentNode.replaceChild(clone, el);
-      const fresh = document.getElementById(`otp-${i}`);
-      fresh.addEventListener('input', e => {
-        e.target.value = e.target.value.replace(/\D/g,'').slice(0,1);
-        if (e.target.value && i < 5) document.getElementById(`otp-${i+1}`)?.focus();
-      });
-      fresh.addEventListener('keydown', e => {
-        if (e.key === 'Backspace' && !e.target.value && i > 0) document.getElementById(`otp-${i-1}`)?.focus();
-      });
-      fresh.addEventListener('paste', e => {
-        e.preventDefault();
-        const digits = (e.clipboardData.getData('text').replace(/\D/g,'')).slice(0,6);
-        digits.split('').forEach((d,j) => { const inp = document.getElementById(`otp-${j}`); if (inp) inp.value = d; });
-        document.getElementById(`otp-${Math.min(digits.length, 5)}`)?.focus();
-      });
+    for (var i = 0; i < 6; i++) {
+      (function(idx) {
+        var el = document.getElementById('otp-' + idx);
+        if (!el) return;
+        el.addEventListener('input', function(e) {
+          e.target.value = e.target.value.replace(/\D/g,'').slice(0,1);
+          if (e.target.value && idx < 5) { var n = document.getElementById('otp-'+(idx+1)); if(n) n.focus(); }
+        });
+        el.addEventListener('keydown', function(e) {
+          if (e.key === 'Backspace' && !e.target.value && idx > 0) { var p = document.getElementById('otp-'+(idx-1)); if(p) p.focus(); }
+        });
+        el.addEventListener('paste', function(e) {
+          e.preventDefault();
+          var digits = (e.clipboardData.getData('text').replace(/\D/g,'')).slice(0,6);
+          digits.split('').forEach(function(d,j){ var inp=document.getElementById('otp-'+j); if(inp) inp.value=d; });
+          var last = document.getElementById('otp-'+Math.min(digits.length,5)); if(last) last.focus();
+        });
+      })(i);
     }
-    document.getElementById('otp-0')?.focus();
+    var first = document.getElementById('otp-0'); if(first) first.focus();
   }
 
   async function submitEmail() {
-    const email = document.getElementById('login-email')?.value.trim();
+    var email = (document.getElementById('login-email')||{}).value;
+    email = (email||'').trim();
     if (!email) { toast('Please enter your email.','error'); return; }
-
-    const errBox = document.getElementById('login-error-box');
-    if (errBox) errBox.innerHTML = '';
-
-    const btn = document.getElementById('login-submit-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; btn.style.opacity = '.8'; }
+    var btn = document.getElementById('login-submit-btn');
+    if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
     try {
-      const res = await call('requestAccess', email);
-      if (res.success) {
-        showOTPStep(email, res.name);
-      } else {
-        if (errBox) errBox.innerHTML = `<div class="lf-error">${res.error}</div>`;
-      }
-    } catch (e) {
-      if (errBox) errBox.innerHTML = `<div class="lf-error">Connection error. Please try again.</div>`;
-    }
-    finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Continue →'; btn.style.opacity = ''; }
-    }
+      var res = await call('requestAccess', email);
+      if (res.success) { renderLoginStep2(email, res.name); }
+      else { renderLoginStep1(res.error); }
+    } catch(e) { renderLoginStep1('Connection error. Please try again.'); }
+    finally { if(btn){btn.disabled=false; btn.textContent='Generate OTP →';} }
   }
 
-  async function doVerifyOTP() {
-    const email = state.pendingEmail;
-    const code  = Array.from({length:6}, (_,i) => document.getElementById(`otp-${i}`)?.value || '').join('');
+  async function submitOTP(email) {
+    var code = [0,1,2,3,4,5].map(function(i){ var el=document.getElementById('otp-'+i); return el?el.value:''; }).join('');
     if (code.length < 6) { toast('Enter all 6 digits.','error'); return; }
-
-    const errBox = document.getElementById('otp-error-box');
-    errBox.innerHTML = '';
-    const btn = document.getElementById('otp-submit-btn');
-    setLoading(btn, true);
+    var btn = document.getElementById('otp-submit-btn');
+    if (btn) { btn.disabled=true; btn.textContent='Verifying…'; }
     try {
-      const res = await call('verifyOTP', email, code);
+      var res = await call('verifyOTP', email, code);
       if (res.success) {
         saveToken(res.token);
         state.token = res.token;
         bootSession(res);
       } else {
-        errBox.innerHTML = `<div class="lf-error">${res.error}</div>`;
+        renderLoginStep2(email, '', res.error);
       }
-    } catch { toast('Connection error. Please try again.','error'); }
-    finally { setLoading(btn, false); }
+    } catch(e) { toast('Connection error. Please try again.','error'); }
+    finally { if(btn){btn.disabled=false; btn.textContent='Verify & Sign In';} }
   }
 
-  async function doResendOTP() {
-    const btn = document.getElementById('resend-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  async function resendOTP(email, name) {
+    var btn = document.getElementById('resend-btn');
+    if (btn) { btn.disabled=true; btn.textContent='Sending...'; }
     try {
-      const res = await call('resendOTP', state.pendingEmail);
-      if (res.success) {
-        toast('New OTP sent!','success');
-        for (let i = 0; i < 6; i++) { const el = document.getElementById(`otp-${i}`); if (el) el.value = ''; }
-        document.getElementById('otp-error-box').innerHTML = '';
-        document.getElementById('otp-0')?.focus();
-      } else { toast(res.error,'error'); }
-    } catch { toast('Connection error.','error'); }
-    finally { if (btn) { btn.disabled = false; btn.textContent = 'Resend OTP'; } }
+      var res = await call('resendOTP', email);
+      if (res.success) { toast('New OTP sent!','success'); renderLoginStep2(email, name||res.name); }
+      else { toast(res.error,'error'); }
+    } catch(e) { toast('Connection error.','error'); }
+    finally { if(btn){btn.disabled=false; btn.textContent='Resend OTP';} }
   }
-
-  // Legacy alias kept in case any inline onclick references it
-  function renderLoginStep1() { showEmailStep(); }
 
   async function doLogout() {
     if (state.token) await call('logout', state.token).catch(()=>{});
@@ -236,7 +242,7 @@ var App = (() => {
     document.getElementById('bottom-nav').style.display = 'none';
     document.getElementById('topnav-cart').style.display = '';
     showPage('login');
-    showEmailStep();
+    renderLoginStep1();
   }
 
   // ================================================================
@@ -1454,7 +1460,7 @@ var App = (() => {
   // Public API
   // ================================================================
   return {
-    init, submitEmail, doVerifyOTP, doResendOTP, showEmailStep, doLogout,
+    init, submitEmail, submitOTP, resendOTP, renderLoginStep1, renderLoginStep2, doLogout,
     navigateTo, doSearch, filterByCategory,
     addToCart, changeQty, placeOrder,
     cancelOrder, openRatingModal, selectStar, submitRating,
@@ -1469,44 +1475,9 @@ var App = (() => {
   };
 })();
 
-// Wire all login form events via addEventListener so they close over the
-// IIFE scope — no global/window lookup needed, works in GAS sandbox.
-(function() {
-  function wireLoginForms() {
-    var submitBtn = document.getElementById('login-submit-btn');
-    if (submitBtn) {
-      submitBtn.addEventListener('click', function() { App.submitEmail(); });
-    }
-
-    var emailInput = document.getElementById('login-email');
-    if (emailInput) {
-      emailInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') App.submitEmail(); });
-    }
-
-    var otpBtn = document.getElementById('otp-submit-btn');
-    if (otpBtn) {
-      otpBtn.addEventListener('click', function() { App.doVerifyOTP(); });
-    }
-
-    var backBtn = document.getElementById('otp-back-btn');
-    if (backBtn) {
-      backBtn.addEventListener('click', function() { App.showEmailStep(); });
-    }
-
-    var resendBtn = document.getElementById('resend-btn');
-    if (resendBtn) {
-      resendBtn.addEventListener('click', function() { App.doResendOTP(); });
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      wireLoginForms();
-      App.init();
-    });
-  } else {
-    wireLoginForms();
-    App.init();
-  }
-})();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', App.init);
+} else {
+  App.init();
+}
 </script>

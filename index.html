@@ -68,77 +68,8 @@
         </div>
       </div>
 
-      <!-- ---- Right: sign-in form (static HTML, JS takes over for OTP) ---- -->
-      <div class="login-right" id="login-right">
-        <div class="login-form-wrap" id="login-step-email">
-
-          <!-- Logo -->
-          <div class="lf-logo">
-            <div class="lf-logo-icon">D</div>
-            <div class="lf-logo-text">DLSL <span>Order</span></div>
-          </div>
-
-          <h1 class="lf-title">Sign in</h1>
-          <p class="lf-sub">Enter your DLSL email address to continue.</p>
-
-          <div id="login-error-box"></div>
-
-          <form id="email-form">
-            <div class="lf-group">
-              <label class="lf-label">Email address</label>
-              <input type="email" class="lf-input" id="login-email"
-                placeholder="yourname@dlsl.edu.ph"
-                autocomplete="email">
-            </div>
-            <button type="button" class="lf-btn" id="login-submit-btn">
-              Generate OTP &rarr;
-            </button>
-          </form>
-
-          <p class="lf-footer">
-            Don't have an account?
-            <strong style="color:#2E7D32;">Contact RESGO</strong> to register.
-          </p>
-        </div>
-
-        <!-- OTP step — hidden until needed -->
-        <div class="login-form-wrap" id="login-step-otp" style="display:none;">
-          <div class="lf-logo">
-            <div class="lf-logo-icon">D</div>
-            <div class="lf-logo-text">DLSL <span>Order</span></div>
-          </div>
-
-          <button class="lf-back" id="otp-back-btn">&#8592; Back</button>
-
-          <h1 class="lf-title">Enter the code</h1>
-          <p class="lf-sub">We sent a 6-digit code to</p>
-          <p class="lf-email-display" id="otp-email-display"></p>
-
-          <div id="otp-error-box"></div>
-
-          <form id="otp-form">
-            <div class="otp-group" id="otp-group">
-              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-0">
-              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-1">
-              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-2">
-              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-3">
-              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-4">
-              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-5">
-            </div>
-            <button type="button" class="lf-btn" id="otp-submit-btn">
-              Verify &amp; Sign In
-            </button>
-          </form>
-
-          <div style="text-align:center;margin-top:14px;">
-            <button class="lf-resend" id="resend-btn">
-              Didn't receive it? Resend code
-            </button>
-          </div>
-
-          <p class="lf-footer">Code expires in 10 minutes. Never share it with anyone.</p>
-        </div>
-      </div>
+      <!-- ---- Right: injected by JS ---- -->
+      <div class="login-right" id="login-right"></div>
 
     </div>
   </div>
