@@ -1469,17 +1469,45 @@ var App = (() => {
   };
 })();
 
-window.App = App;
+// Wire all login form events via addEventListener so they close over the
+// IIFE scope — no global/window lookup needed, works in GAS sandbox.
+(function() {
+  function wireLoginForms() {
+    var emailForm = document.getElementById('email-form');
+    if (emailForm) {
+      emailForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        App.submitEmail();
+      });
+    }
 
-// Expose login functions directly on window — no App reference needed
-window.submitEmail   = submitEmail;
-window.showEmailStep = showEmailStep;
-window.doVerifyOTP   = doVerifyOTP;
-window.doResendOTP   = doResendOTP;
+    var otpForm = document.getElementById('otp-form');
+    if (otpForm) {
+      otpForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        App.doVerifyOTP();
+      });
+    }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', App.init);
-} else {
-  App.init();
-}
+    var backBtn = document.getElementById('otp-back-btn');
+    if (backBtn) {
+      backBtn.addEventListener('click', function() { App.showEmailStep(); });
+    }
+
+    var resendBtn = document.getElementById('resend-btn');
+    if (resendBtn) {
+      resendBtn.addEventListener('click', function() { App.doResendOTP(); });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      wireLoginForms();
+      App.init();
+    });
+  } else {
+    wireLoginForms();
+    App.init();
+  }
+})();
 </script>

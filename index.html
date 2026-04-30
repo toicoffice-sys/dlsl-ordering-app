@@ -83,16 +83,17 @@
 
           <div id="login-error-box"></div>
 
-          <div class="lf-group">
-            <label class="lf-label">Email address</label>
-            <input type="email" class="lf-input" id="login-email"
-              placeholder="yourname@dlsl.edu.ph"
-              autocomplete="email">
-          </div>
-
-          <button class="lf-btn" id="login-submit-btn" onclick="submitEmail()">
-            Continue &rarr;
-          </button>
+          <form id="email-form">
+            <div class="lf-group">
+              <label class="lf-label">Email address</label>
+              <input type="email" class="lf-input" id="login-email"
+                placeholder="yourname@dlsl.edu.ph"
+                autocomplete="email">
+            </div>
+            <button type="submit" class="lf-btn" id="login-submit-btn">
+              Generate OTP &rarr;
+            </button>
+          </form>
 
           <p class="lf-footer">
             Don't have an account?
@@ -107,7 +108,7 @@
             <div class="lf-logo-text">DLSL <span>Order</span></div>
           </div>
 
-          <button class="lf-back" id="otp-back-btn" onclick="showEmailStep()">&#8592; Back</button>
+          <button class="lf-back" id="otp-back-btn">&#8592; Back</button>
 
           <h1 class="lf-title">Enter the code</h1>
           <p class="lf-sub">We sent a 6-digit code to</p>
@@ -115,21 +116,22 @@
 
           <div id="otp-error-box"></div>
 
-          <div class="otp-group" id="otp-group">
-            <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-0">
-            <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-1">
-            <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-2">
-            <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-3">
-            <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-4">
-            <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-5">
-          </div>
-
-          <button class="lf-btn" id="otp-submit-btn" onclick="doVerifyOTP()">
-            Verify &amp; Sign In
-          </button>
+          <form id="otp-form">
+            <div class="otp-group" id="otp-group">
+              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-0">
+              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-1">
+              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-2">
+              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-3">
+              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-4">
+              <input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-5">
+            </div>
+            <button type="submit" class="lf-btn" id="otp-submit-btn">
+              Verify &amp; Sign In
+            </button>
+          </form>
 
           <div style="text-align:center;margin-top:14px;">
-            <button class="lf-resend" id="resend-btn" onclick="doResendOTP()">
+            <button class="lf-resend" id="resend-btn">
               Didn't receive it? Resend code
             </button>
           </div>
