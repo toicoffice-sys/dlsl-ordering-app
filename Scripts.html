@@ -129,7 +129,15 @@ var App = (() => {
     state.cart      = loadCart();
     state.favorites = loadFavorites();
     const nameEl = document.getElementById('topnav-username');
-    if (nameEl) nameEl.textContent = (res.user.name || '').split(' ')[0];
+    if (nameEl) {
+      if (res.role === 'concessionaire' && res.stallData?.StallName) {
+        nameEl.innerHTML = `${res.stallData.StallName} <span style="font-size:10px;background:var(--gold);color:var(--g900);padding:2px 7px;border-radius:10px;font-weight:700;vertical-align:middle;margin-left:4px;">CONCESSIONAIRE</span>`;
+      } else if (res.role === 'admin') {
+        nameEl.innerHTML = `${(res.user.name || '').split(' ')[0]} <span style="font-size:10px;background:#C8A951;color:#1A3A5C;padding:2px 7px;border-radius:10px;font-weight:700;vertical-align:middle;margin-left:4px;">ADMIN</span>`;
+      } else {
+        nameEl.textContent = (res.user.name || '').split(' ')[0];
+      }
+    }
     document.getElementById('main-nav').style.display = 'flex';
     document.getElementById('bottom-nav').style.display = 'block';
     document.getElementById('app-footer').style.display = 'block';
@@ -1280,12 +1288,13 @@ var App = (() => {
     } catch { toast('Update failed.','error'); }
   }
 
-  async function renderStallOrders() {
+  async function renderStallOrders(tab) {
+    tab = tab || 'active';
     showPage('main');
     const el = document.getElementById('main-content');
     el.innerHTML = `
       <div style="padding:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <h2 style="font-size:18px;font-weight:700;">Orders</h2>
           <select class="form-control" style="width:140px;" id="orders-filter" onchange="App.filterStallOrders(this.value)">
             <option value="">All</option>
@@ -1297,24 +1306,34 @@ var App = (() => {
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
+        <div class="order-tabs" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+          <button class="order-tab${tab==='active'?' active':''}" onclick="App.renderStallOrders('active')">Active</button>
+          <button class="order-tab${tab==='history'?' active':''}" onclick="App.renderStallOrders('history')">History</button>
+        </div>
         <div id="stall-orders-list"><div class="loader"><div class="spinner"></div></div></div>
       </div>`;
 
-    await loadStallOrders(null);
+    await loadStallOrders(null, tab);
   }
 
-  async function loadStallOrders(statusFilter) {
+  async function loadStallOrders(statusFilter, tab) {
     try {
       const res = await call('getStallOrders', state.token, statusFilter ? { status: statusFilter } : {});
       const list = document.getElementById('stall-orders-list');
       if (!list) return;
-      list.innerHTML = res.orders?.length
-        ? res.orders.map(o => concOrderCard(o)).join('')
-        : '<p style="color:var(--text3);text-align:center;padding:40px 0;">No orders found.</p>';
+      const all = res.orders || [];
+      const activeStatuses = ['pending','confirmed','preparing','ready'];
+      const historyStatuses = ['completed','cancelled'];
+      let orders = all;
+      if (tab === 'active')  orders = all.filter(o => activeStatuses.includes(o.Status));
+      if (tab === 'history') orders = all.filter(o => historyStatuses.includes(o.Status));
+      list.innerHTML = orders.length
+        ? orders.map(o => concOrderCard(o)).join('')
+        : `<div class="empty-state"><div class="empty-icon">${tab==='history'?'🗂️':'📭'}</div><p>${tab==='history'?'No order history yet.':'No active orders.'}</p></div>`;
     } catch { toast('Failed to load orders.','error'); }
   }
 
-  function filterStallOrders(status) { loadStallOrders(status || null); }
+  function filterStallOrders(status) { loadStallOrders(status || null, null); }
 
   // ================================================================
   // CONCESSIONAIRE PRODUCTS
@@ -2101,7 +2120,7 @@ var App = (() => {
     addToCart, changeQty, removeCartItem, removeStallFromCart, placeOrder,
     _toggleRef, _checkOrderReady, _proofSelected, _clearProof,
     cancelOrder, openRatingModal, selectStar, submitRating,
-    updateStatus, verifyPayment, filterStallOrders,
+    updateStatus, verifyPayment, filterStallOrders, renderStallOrders,
     toggleStallOnline, openHoursModal,
     toggleFavorite, renderFavorites, renderMyOrders, renderLocationMap,
     openProductModal, saveProduct, toggleAvailability, deleteProduct,
