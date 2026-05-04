@@ -317,10 +317,17 @@ var App = (() => {
 
       const adminSections = [
         { label: 'Main', items: [
-          { id:'home',    icon:'📊', label:'Dashboard' },
-          { id:'users',   icon:'👥', label:'Users' },
-          { id:'stalls',  icon:'🏪', label:'Stalls' },
-          { id:'reports', icon:'📈', label:'Reports' }
+          { id:'home',      icon:'📊', label:'Dashboard' },
+          { id:'users',     icon:'👥', label:'Users' },
+          { id:'stalls',    icon:'🏪', label:'Stalls' }
+        ]},
+        { label: 'Reports', items: [
+          { id:'reports',   icon:'📈', label:'Sales Reports' },
+          { id:'analytics', icon:'📉', label:'Analytics' },
+          { id:'scheduled', icon:'🕐', label:'Scheduled Reports' }
+        ]},
+        { label: 'System', items: [
+          { id:'audit',     icon:'📋', label:'Audit Log' }
         ]}
       ];
       const concSections = [
@@ -392,6 +399,9 @@ var App = (() => {
         if (state.role === 'admin') renderAdminReports();
         else renderConcReports();
         break;
+      case 'analytics':  renderAnalytics();        break;
+      case 'audit':      renderAuditLog();          break;
+      case 'scheduled':  renderScheduledReports();  break;
       case 'profile':   renderProfile(); break;
       case 'favorites': renderFavorites(); break;
       case 'location':  renderLocationMap(); break;
@@ -1135,7 +1145,10 @@ var App = (() => {
     el.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
 
     try {
-      const res = await call('getOrderDetail', state.token, orderId);
+      const [res, auditRes] = await Promise.all([
+        call('getOrderDetail', state.token, orderId),
+        call('getOrderAuditLog', state.token, orderId)
+      ]);
       if (!res.success) { toast(res.error,'error'); navigateTo('orders'); return; }
 
       const o = res.order;
@@ -1143,9 +1156,18 @@ var App = (() => {
       const isCustomer = state.role === 'student' || state.role === 'parent' || state.role === 'partner';
       const canCancel  = isCustomer && ['pending','confirmed'].includes(o.Status);
       const canRate    = isCustomer && o.Status === 'completed';
+      const auditLogs  = (auditRes?.logs || []);
 
-      const statusFlow = ['pending','confirmed','preparing','ready','completed'];
-      const currentIdx = statusFlow.indexOf(o.Status);
+      const payMethodLabel = (o.PaymentMethod||'').replace(/_/g,' ');
+      const payStatusBadge = o.PaymentStatus === 'paid'
+        ? `<span class="badge badge-approved">Paid</span>`
+        : o.PaymentStatus === 'rejected'
+        ? `<span class="badge badge-rejected">Rejected</span>`
+        : o.PaymentStatus === 'awaiting_confirmation'
+        ? `<span class="badge badge-pending">Awaiting Verification</span>`
+        : `<span class="badge badge-pending">Pending</span>`;
+
+      const actionIconMap = { CREATE:'🟢', UPDATE:'🔵', DELETE:'🔴', LOGIN:'🔑', LOGOUT:'🚪', EXPORT:'📤' };
 
       el.innerHTML = `
         <div style="padding:20px;">
@@ -1167,7 +1189,7 @@ var App = (() => {
                 </div>` : ''}
               <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;color:var(--text2);">
                 <span>Ordered: ${new Date(o.CreatedAt).toLocaleString('en-PH')}</span>
-                <span>Payment: ${(o.PaymentMethod||'').replace(/_/g,' ')}</span>
+                <span>Payment: ${payMethodLabel} ${payStatusBadge}</span>
               </div>
               ${items.map(i => `
                 <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
@@ -1179,13 +1201,28 @@ var App = (() => {
               </div>
               ${o.Notes ? `<p style="margin-top:12px;font-size:13px;color:var(--text2);">Note: ${o.Notes}</p>` : ''}
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">
+                ${o.ProofURL ? `<a href="${o.ProofURL}" target="_blank" class="btn btn-outline btn-sm">🖼️ View Proof of Payment</a>` : ''}
                 ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="App.cancelOrder('${o.OrderID}')">Cancel Order</button>` : ''}
                 ${canRate ? `<button class="btn btn-outline btn-sm" onclick="App.openRatingModal('${o.StallID}','${o.OrderID}')">⭐ Rate Order</button>` : ''}
               </div>
             </div>
           </div>
+
+          <div class="card">
+            <div class="card-header"><h2>Order History</h2></div>
+            <div class="card-body" style="padding-bottom:8px;">
+              ${auditLogs.length ? `
+                <ul class="order-timeline">
+                  ${auditLogs.map(l => `
+                    <li style="position:relative;padding-left:22px;padding-bottom:14px;">
+                      <div style="font-size:13px;font-weight:600;">${actionIconMap[l.Action]||'•'} ${l.Details||l.Action}</div>
+                      <div style="font-size:11px;color:var(--text3);margin-top:2px;">${new Date(l.Timestamp).toLocaleString('en-PH')} · ${l.UserEmail}</div>
+                    </li>`).join('')}
+                </ul>` : `<p style="font-size:13px;color:var(--text3);text-align:center;padding:16px 0;">No history available.</p>`}
+            </div>
+          </div>
         </div>`;
-    } catch { toast('Failed to load order.','error'); }
+    } catch(e) { toast('Failed to load order.','error'); }
   }
 
   async function cancelOrder(orderId) {
@@ -2067,22 +2104,12 @@ var App = (() => {
   async function renderConcReports() {
     showPage('main');
     const el = document.getElementById('main-content');
-    const today = new Date().toISOString().substring(0,10);
-    const startOfMonth = today.substring(0,7) + '-01';
-
     el.innerHTML = `
-      <div style="padding:20px;">
+      <div style="padding:20px;" id="printable-report">
+        <div class="print-title">GreenBite — ${state.stallData?.StallName || 'My Stall'} Sales Report</div>
         <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">Sales Reports</h2>
         <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">${state.stallData?.StallName || 'My Stall'}</p>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-body">
-            <div class="form-row">
-              <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="conc-rep-start" value="${startOfMonth}"></div>
-              <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="conc-rep-end" value="${today}"></div>
-            </div>
-            <button class="btn btn-primary" onclick="App.loadConcReport()">Generate Report</button>
-          </div>
-        </div>
+        ${_reportFilterHTML('conc-rep-start','conc-rep-end','loadConcReport')}
         <div id="conc-report-content"></div>
       </div>`;
   }
@@ -2125,24 +2152,34 @@ var App = (() => {
     } catch { el.innerHTML = '<div class="alert alert-danger">Failed to generate report.</div>'; }
   }
 
+  function _reportFilterHTML(startId, endId, generateFn) {
+    const today = new Date().toISOString().substring(0,10);
+    const startOfMonth = today.substring(0,7) + '-01';
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="${startId}" value="${startOfMonth}"></div>
+            <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="${endId}" value="${today}"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            <button class="btn btn-primary" onclick="App.${generateFn}()">📊 Generate</button>
+            <button class="btn btn-outline btn-sm no-print" onclick="App.doExportCSV('${startId}','${endId}')">📥 Export CSV</button>
+            <button class="btn btn-outline btn-sm no-print" onclick="App.doPrintReport()">🖨️ Print / PDF</button>
+            <button class="btn btn-outline btn-sm no-print" onclick="App.doEmailReport('${startId}','${endId}')">📧 Email Report</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
   async function renderAdminReports() {
     showPage('main');
     const el = document.getElementById('main-content');
-    const today = new Date().toISOString().substring(0,10);
-    const startOfMonth = today.substring(0,7) + '-01';
-
     el.innerHTML = `
-      <div style="padding:20px;">
+      <div style="padding:20px;" id="printable-report">
+        <div class="print-title">GreenBite — Sales Report</div>
         <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">Sales Reports</h2>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-body">
-            <div class="form-row">
-              <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="rep-start" value="${startOfMonth}"></div>
-              <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="rep-end" value="${today}"></div>
-            </div>
-            <button class="btn btn-primary" onclick="App.loadReport()">Generate Report</button>
-          </div>
-        </div>
+        ${_reportFilterHTML('rep-start','rep-end','loadReport')}
         <div id="report-content"></div>
       </div>`;
   }
@@ -2183,6 +2220,238 @@ var App = (() => {
           </div>
         </div>`;
     } catch { el.innerHTML = '<div class="alert alert-danger">Failed to generate report.</div>'; }
+  }
+
+  // ================================================================
+  // EXPORT HANDLERS
+  // ================================================================
+
+  async function doExportCSV(startId, endId) {
+    const start = document.getElementById(startId).value;
+    const end   = document.getElementById(endId).value;
+    const btn   = event.target;
+    setLoading(btn, true);
+    try {
+      const res = await call('exportReportCSV', state.token, start, end);
+      if (!res.success) { toast(res.error,'error'); return; }
+      const blob = new Blob([res.csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = res.filename; a.click();
+      URL.revokeObjectURL(url);
+      toast('CSV downloaded!');
+    } catch { toast('Export failed.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  function doPrintReport() { window.print(); }
+
+  async function doEmailReport(startId, endId) {
+    const start = document.getElementById(startId).value;
+    const end   = document.getElementById(endId).value;
+    const email = prompt('Send report to email address:', state.user?.email || '');
+    if (!email) return;
+    const btn = event.target;
+    setLoading(btn, true);
+    try {
+      const res = await call('emailReport', state.token, start, end, email);
+      if (res.success) toast(`Report sent to ${email}!`);
+      else toast(res.error, 'error');
+    } catch { toast('Failed to send.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  // ================================================================
+  // ANALYTICS
+  // ================================================================
+
+  async function renderAnalytics() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    const today = new Date().toISOString().substring(0,10);
+    const startOfMonth = today.substring(0,7) + '-01';
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">📉 Analytics</h2>
+        <div class="form-row" style="margin-bottom:16px;">
+          <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="an-start" value="${startOfMonth}"></div>
+          <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="an-end" value="${today}"></div>
+          <div class="form-group" style="align-self:flex-end;"><button class="btn btn-primary" onclick="App.loadAnalytics()">Load</button></div>
+        </div>
+        <div id="analytics-content"><div class="empty-state"><div class="empty-icon">📉</div><p>Select a date range and click Load.</p></div></div>
+      </div>`;
+  }
+
+  async function loadAnalytics() {
+    const start = document.getElementById('an-start').value;
+    const end   = document.getElementById('an-end').value;
+    const el    = document.getElementById('analytics-content');
+    el.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    try {
+      const res = await call('getSalesReport', state.token, start, end);
+      if (!res.success) { el.innerHTML = `<p style="color:red;">${res.error}</p>`; return; }
+      const r = res.report;
+
+      el.innerHTML = `
+        <div class="stats-grid" style="margin-bottom:20px;">
+          <div class="stat-card"><div class="stat-value">${r.totalOrders}</div><div class="stat-label">Total Orders</div></div>
+          <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(r.totalRevenue)}</div><div class="stat-label">Revenue</div></div>
+          <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(r.averageOrderValue)}</div><div class="stat-label">Avg Value</div></div>
+        </div>
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-header"><h2>Daily Revenue</h2></div>
+          <div class="card-body"><canvas id="chart-daily" height="120"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Top Products</h2></div>
+          <div class="card-body"><canvas id="chart-products" height="120"></canvas></div>
+        </div>`;
+
+      // Load Chart.js and draw
+      if (!window.Chart) {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+
+      new Chart(document.getElementById('chart-daily'), {
+        type: 'line',
+        data: {
+          labels: r.dailyRevenue.map(d => d.date),
+          datasets: [{ label: 'Revenue (₱)', data: r.dailyRevenue.map(d => d.total),
+            borderColor: '#1B5E20', backgroundColor: 'rgba(27,94,32,.1)', tension: .3, fill: true }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      new Chart(document.getElementById('chart-products'), {
+        type: 'bar',
+        data: {
+          labels: r.topProducts.slice(0,8).map(p => p.name),
+          datasets: [{ label: 'Qty Sold', data: r.topProducts.slice(0,8).map(p => p.qty),
+            backgroundColor: '#1B5E20' }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+    } catch(e) { el.innerHTML = '<div class="alert alert-danger">Failed to load analytics.</div>'; }
+  }
+
+  // ================================================================
+  // AUDIT LOG
+  // ================================================================
+
+  async function renderAuditLog() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">📋 Audit Log</h2>
+        <div id="audit-content"><div class="loader"><div class="spinner"></div></div></div>
+      </div>`;
+    try {
+      const res = await call('getAuditLog', state.token, 200, 0);
+      const logs = res.logs || [];
+      document.getElementById('audit-content').innerHTML = logs.length
+        ? `<div class="table-wrap"><table>
+            <tr><th>Timestamp</th><th>User</th><th>Action</th><th>Module</th><th>Record ID</th><th>Details</th></tr>
+            ${logs.map(l => `
+              <tr>
+                <td style="font-size:12px;white-space:nowrap;">${new Date(l.Timestamp).toLocaleString('en-PH')}</td>
+                <td style="font-size:12px;">${l.UserEmail}</td>
+                <td><span class="audit-action ${l.Action}">${l.Action}</span></td>
+                <td style="font-size:12px;">${l.Module}</td>
+                <td style="font-size:11px;font-family:monospace;">${l.RecordID||'-'}</td>
+                <td style="font-size:12px;max-width:220px;word-break:break-word;">${l.Details||''}</td>
+              </tr>`).join('')}
+           </table></div>
+           <p style="font-size:12px;color:var(--text3);margin-top:8px;">Showing last ${logs.length} of ${res.total} entries.</p>`
+        : '<div class="empty-state"><div class="empty-icon">📋</div><p>No audit entries yet.</p></div>';
+    } catch { toast('Failed to load audit log.','error'); }
+  }
+
+  // ================================================================
+  // SCHEDULED REPORTS
+  // ================================================================
+
+  async function renderScheduledReports() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="font-size:18px;font-weight:700;">🕐 Scheduled Reports</h2>
+          <button class="btn btn-primary btn-sm" onclick="App.openAddScheduledModal()">+ Add Schedule</button>
+        </div>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Reports are sent automatically on the configured schedule. Ensure the <strong>runScheduledReports</strong> time trigger is set up in Apps Script.</p>
+        <div id="scheduled-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+      <div class="modal-overlay" id="modal-add-schedule">
+        <div class="modal">
+          <div class="modal-header"><h3>Add Scheduled Report</h3><button class="modal-close" onclick="App.closeModal('modal-add-schedule')">✕</button></div>
+          <div class="modal-body">
+            <div class="form-group"><label class="form-label">Report Name *</label><input class="form-control" id="sch-name" placeholder="e.g. Weekly Sales Summary"></div>
+            <div class="form-group"><label class="form-label">Frequency *</label>
+              <select class="form-control" id="sch-freq">
+                <option value="daily">Daily</option>
+                <option value="weekly" selected>Weekly (Mondays)</option>
+                <option value="monthly">Monthly (1st of month)</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Recipients (comma-separated emails) *</label>
+              <input class="form-control" id="sch-recipients" placeholder="admin@dlsl.edu.ph, owner@dlsl.edu.ph">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-add-schedule')">Cancel</button>
+            <button class="btn btn-primary" id="save-schedule-btn" onclick="App.saveSchedule()">Save</button>
+          </div>
+        </div>
+      </div>`;
+
+    try {
+      const res = await call('getScheduledReports', state.token);
+      const rpts = res.reports || [];
+      document.getElementById('scheduled-list').innerHTML = rpts.length
+        ? `<div class="table-wrap"><table>
+            <tr><th>Name</th><th>Frequency</th><th>Recipients</th><th>Last Sent</th><th>Actions</th></tr>
+            ${rpts.map(r => `
+              <tr>
+                <td><strong>${r.Name}</strong></td>
+                <td style="text-transform:capitalize;">${r.Frequency}</td>
+                <td style="font-size:12px;">${r.Recipients}</td>
+                <td style="font-size:12px;">${r.LastSent||'Never'}</td>
+                <td><button class="btn btn-danger btn-sm" onclick="App.deleteSchedule('${r.ReportID}')">Delete</button></td>
+              </tr>`).join('')}
+           </table></div>`
+        : '<div class="empty-state"><div class="empty-icon">🕐</div><p>No scheduled reports. Add one above.</p></div>';
+    } catch { toast('Failed to load scheduled reports.','error'); }
+  }
+
+  function openAddScheduledModal() { openModal('modal-add-schedule'); }
+
+  async function saveSchedule() {
+    const btn = document.getElementById('save-schedule-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('saveScheduledReport', state.token, {
+        name: document.getElementById('sch-name').value,
+        frequency: document.getElementById('sch-freq').value,
+        recipients: document.getElementById('sch-recipients').value
+      });
+      if (res.success) { closeModal('modal-add-schedule'); toast('Schedule saved!'); renderScheduledReports(); }
+      else toast(res.error,'error');
+    } catch { toast('Failed.','error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  async function deleteSchedule(reportId) {
+    if (!confirm('Delete this scheduled report?')) return;
+    const res = await call('deleteScheduledReport', state.token, reportId).catch(()=>null);
+    if (res?.success) { toast('Deleted.'); renderScheduledReports(); }
+    else toast('Failed.','error');
   }
 
   // ================================================================
@@ -2241,6 +2510,10 @@ var App = (() => {
     renderConcUsers, openConcAddUserModal, saveConcStaff,
     openAddStallModal, saveStall, approveStall, previewStallImage,
     loadReport, renderConcReports, loadConcReport,
+    doExportCSV, doPrintReport, doEmailReport,
+    renderAnalytics, loadAnalytics,
+    renderAuditLog,
+    renderScheduledReports, openAddScheduledModal, saveSchedule, deleteSchedule,
     openModal, closeModal
   };
 })();
