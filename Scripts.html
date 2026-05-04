@@ -1183,7 +1183,7 @@ var App = (() => {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div>
             <h2 style="font-size:18px;font-weight:700;">${state.stallData?.StallName || 'My Stall'}</h2>
-            <p style="font-size:13px;color:var(--text2);">Today's Dashboard</p>
+            <p style="font-size:13px;color:var(--text2);">Concessionaire Dashboard</p>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button class="stall-status-toggle ${isOnline?'online':'offline'}" id="stall-toggle-btn" onclick="App.toggleStallOnline()">
@@ -1675,24 +1675,113 @@ var App = (() => {
         </div>
         <div id="users-table"><div class="loader"><div class="spinner"></div></div></div>
       </div>
-      ${addUserModal()}`;
+      ${addUserModal()}
+      ${editUserModal()}`;
 
     try {
-      const res = await call('getUsers', state.token);
+      const [usersRes, stalls] = await Promise.all([
+        call('getUsers', state.token),
+        call('getConcessionaires', false)
+      ]);
+      const stallMap = {};
+      (stalls || []).forEach(s => { stallMap[s.StallID] = s.StallName; });
+
       document.getElementById('users-table').innerHTML = `
         <div class="table-wrap"><table>
-          <tr><th>Name</th><th>Email</th><th>Role</th><th>ID Number</th><th>Status</th><th>Actions</th></tr>
-          ${(res.users||[]).map(u => `
+          <tr><th>Name</th><th>Email</th><th>Role</th><th>Assigned Stall</th><th>Status</th><th>Actions</th></tr>
+          ${(usersRes.users||[]).map(u => `
             <tr>
               <td><strong>${u.Name}</strong></td>
               <td style="font-size:13px;">${u.Email}</td>
               <td>${u.Role}</td>
-              <td style="font-size:13px;">${u.IDNumber||'-'}</td>
+              <td style="font-size:13px;">${u.StallID ? (stallMap[u.StallID] || u.StallID) : '-'}</td>
               <td>${statusBadge(u.Status === 'active' ? 'approved' : 'rejected')}</td>
-              <td><button class="btn btn-ghost btn-sm" onclick="App.deactivateUser('${u.UserID}','${u.Name}','${u.Status}')">${u.Status==='active'?'Deactivate':'Activate'}</button></td>
+              <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn btn-outline btn-sm" onclick="App.openEditUserModal(${JSON.stringify(u).replace(/"/g,'&quot;')}, ${JSON.stringify(stalls||[]).replace(/"/g,'&quot;')})">✏️ Edit</button>
+                <button class="btn btn-ghost btn-sm" onclick="App.deactivateUser('${u.UserID}','${u.Name}','${u.Status}')">${u.Status==='active'?'Deactivate':'Activate'}</button>
+              </td>
             </tr>`).join('')}
         </table></div>`;
     } catch { toast('Failed to load users.','error'); }
+  }
+
+  function editUserModal() {
+    const roles = ['student','parent','partner','concessionaire','admin'];
+    return `
+      <div class="modal-overlay" id="modal-edit-user">
+        <div class="modal">
+          <div class="modal-header"><h3>Edit User</h3><button class="modal-close" onclick="App.closeModal('modal-edit-user')">✕</button></div>
+          <div class="modal-body">
+            <input type="hidden" id="eu-id">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="eu-name"></div>
+              <div class="form-group"><label class="form-label">Email</label><input class="form-control" id="eu-email" disabled style="background:#f5f5f5;"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Role *</label>
+                <select class="form-control" id="eu-role" onchange="App._toggleEditStallField(this.value)">
+                  ${roles.map(r=>`<option value="${r}">${r}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group"><label class="form-label">ID Number</label><input class="form-control" id="eu-id-num"></div>
+            </div>
+            <div class="form-group" id="eu-stall-group" style="display:none;">
+              <label class="form-label">Assigned Stall *</label>
+              <select class="form-control" id="eu-stall"><option value="">-- Select Stall --</option></select>
+            </div>
+            <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="eu-phone"></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-edit-user')">Cancel</button>
+            <button class="btn btn-primary" id="save-edit-user-btn" onclick="App.saveEditUser()">Save Changes</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openEditUserModal(user, stalls) {
+    document.getElementById('eu-id').value     = user.UserID  || '';
+    document.getElementById('eu-name').value   = user.Name    || '';
+    document.getElementById('eu-email').value  = user.Email   || '';
+    document.getElementById('eu-role').value   = user.Role    || 'student';
+    document.getElementById('eu-id-num').value = user.IDNumber|| '';
+    document.getElementById('eu-phone').value  = user.Phone   || '';
+
+    // Populate stall dropdown
+    const stallSel = document.getElementById('eu-stall');
+    stallSel.innerHTML = '<option value="">-- Select Stall --</option>';
+    (stalls || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.StallID; opt.textContent = s.StallName;
+      if (s.StallID === user.StallID) opt.selected = true;
+      stallSel.appendChild(opt);
+    });
+
+    _toggleEditStallField(user.Role);
+    openModal('modal-edit-user');
+  }
+
+  function _toggleEditStallField(role) {
+    const group = document.getElementById('eu-stall-group');
+    if (group) group.style.display = role === 'concessionaire' ? 'block' : 'none';
+  }
+
+  async function saveEditUser() {
+    const btn = document.getElementById('save-edit-user-btn');
+    setLoading(btn, true);
+    const role = document.getElementById('eu-role').value;
+    try {
+      const res = await call('updateUser', state.token, document.getElementById('eu-id').value, {
+        name:     document.getElementById('eu-name').value,
+        role,
+        idNumber: document.getElementById('eu-id-num').value,
+        phone:    document.getElementById('eu-phone').value,
+        stallId:  role === 'concessionaire' ? document.getElementById('eu-stall').value : ''
+      });
+      if (res.success) { closeModal('modal-edit-user'); toast('User updated!'); renderAdminUsers(); }
+      else toast(res.error, 'error');
+    } catch { toast('Failed.', 'error'); }
+    finally { setLoading(btn, false); }
   }
 
   function addUserModal() {
@@ -2019,6 +2108,7 @@ var App = (() => {
     previewProductImage, previewFromURL,
     approveProduct,
     openAddUserModal, saveUser, deactivateUser, _toggleStallField,
+    openEditUserModal, saveEditUser, _toggleEditStallField,
     renderConcUsers, openConcAddUserModal, saveConcStaff,
     openAddStallModal, saveStall, approveStall, previewStallImage,
     loadReport,

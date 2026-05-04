@@ -110,8 +110,9 @@ function updateUser(token, userId, data) {
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] !== userId) continue;
 
+    ensureUsersStallIdColumn();
     const updatable = { Name: data.name, Role: data.role, IDNumber: data.idNumber,
-                        Phone: data.phone, Status: data.status };
+                        Phone: data.phone, Status: data.status, StallID: data.stallId };
     for (const [key, val] of Object.entries(updatable)) {
       const col = headers.indexOf(key);
       if (col >= 0 && val !== undefined) sheet.getRange(i + 1, col + 1).setValue(val);
