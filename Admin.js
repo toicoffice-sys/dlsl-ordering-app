@@ -30,8 +30,11 @@ function addUser(token, data) {
   const g = requireAdmin(token);
   if (!g.ok) return { success: false, error: g.error };
 
-  const { name, email, role, idNumber, phone } = data || {};
+  const { name, email, role, idNumber, phone, stallId } = data || {};
   if (!name || !email || !role) return { success: false, error: 'Name, email, and role are required.' };
+
+  if (role === ROLES.CONCESSIONAIRE && !stallId)
+    return { success: false, error: 'Please select a stall to assign this concessionaire account.' };
 
   const validRoles = Object.values(ROLES);
   if (!validRoles.includes(role)) return { success: false, error: 'Invalid role.' };
@@ -41,12 +44,58 @@ function addUser(token, data) {
   if (existing.some(r => (r.Email || '').toLowerCase() === emailLc))
     return { success: false, error: 'Email already registered.' };
 
+  ensureUsersStallIdColumn();
   getSheet(SHEETS.USERS).appendRow([
     genId('USR'), name.trim(), emailLc, role,
-    (idNumber || '').trim(), (phone || '').trim(), 'active', now()
+    (idNumber || '').trim(), (phone || '').trim(), 'active', now(),
+    role === ROLES.CONCESSIONAIRE ? (stallId || '') : ''
   ]);
 
   notifyAccountCreated(emailLc, name.trim(), role);
+  return { success: true };
+}
+
+// Concessionaire: get staff users linked to their stall
+function getConcStaff(token) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+  if (session.role !== ROLES.CONCESSIONAIRE && session.role !== ROLES.ADMIN)
+    return { success: false, error: 'Unauthorized.' };
+
+  const stall = getStallByEmail(session.email);
+  if (!stall) return { success: false, error: 'Stall not found.' };
+
+  const users = sheetToObjects(getSheet(SHEETS.USERS))
+    .filter(r => r.StallID === stall.StallID && r.Role === ROLES.CONCESSIONAIRE && r.Status === 'active');
+
+  return { success: true, users, stallName: stall.StallName };
+}
+
+// Concessionaire: add staff user for their own stall
+function addConcStaff(token, data) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+  if (session.role !== ROLES.CONCESSIONAIRE && session.role !== ROLES.ADMIN)
+    return { success: false, error: 'Unauthorized.' };
+
+  const stall = getStallByEmail(session.email);
+  if (!stall) return { success: false, error: 'Stall not found.' };
+
+  const { name, email, idNumber, phone } = data || {};
+  if (!name || !email) return { success: false, error: 'Name and email are required.' };
+
+  const emailLc = email.toLowerCase().trim();
+  const existing = sheetToObjects(getSheet(SHEETS.USERS));
+  if (existing.some(r => (r.Email || '').toLowerCase() === emailLc))
+    return { success: false, error: 'Email already registered.' };
+
+  ensureUsersStallIdColumn();
+  getSheet(SHEETS.USERS).appendRow([
+    genId('USR'), name.trim(), emailLc, ROLES.CONCESSIONAIRE,
+    (idNumber || '').trim(), (phone || '').trim(), 'active', now(), stall.StallID
+  ]);
+
+  notifyAccountCreated(emailLc, name.trim(), ROLES.CONCESSIONAIRE);
   return { success: true };
 }
 

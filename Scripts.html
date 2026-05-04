@@ -301,7 +301,8 @@ var App = (() => {
     const concTabs = [
       { id:'home',     icon:'📊', label:'Dashboard' },
       { id:'products', icon:'🍽️', label:'Menu' },
-      { id:'orders',   icon:'📦', label:'Orders' }
+      { id:'orders',   icon:'📦', label:'Orders' },
+      { id:'users',    icon:'👥', label:'Users' }
     ];
     const adminTabs = [
       { id:'home',    icon:'📊', label:'Dashboard' },
@@ -343,7 +344,10 @@ var App = (() => {
         break;
       case 'order-detail': renderOrderDetail(params?.orderId); break;
       case 'products':  renderConcProducts(); break;
-      case 'users':     renderAdminUsers(); break;
+      case 'users':
+        if (state.role === 'admin') renderAdminUsers();
+        else renderConcUsers();
+        break;
       case 'stalls':    renderAdminStalls(); break;
       case 'reports':   renderAdminReports(); break;
       case 'profile':   renderProfile(); break;
@@ -1558,6 +1562,78 @@ var App = (() => {
     else toast(res?.error || 'Failed.','error');
   }
 
+  // ================================================================
+  // CONCESSIONAIRE: USER MANAGEMENT
+  // ================================================================
+
+  async function renderConcUsers() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="font-size:18px;font-weight:700;">👥 Staff Accounts</h2>
+          <button class="btn btn-primary btn-sm" onclick="App.openConcAddUserModal()">+ Add Staff</button>
+        </div>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Manage accounts that can access your stall dashboard.</p>
+        <div id="conc-users-table"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+      <div class="modal-overlay" id="modal-add-conc-staff">
+        <div class="modal">
+          <div class="modal-header"><h3>Add Staff Account</h3><button class="modal-close" onclick="App.closeModal('modal-add-conc-staff')">✕</button></div>
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="cs-name" placeholder="Juan dela Cruz"></div>
+              <div class="form-group"><label class="form-label">Email *</label><input class="form-control" id="cs-email" type="email" placeholder="staff@dlsl.edu.ph"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">ID Number</label><input class="form-control" id="cs-id" placeholder="Employee ID"></div>
+              <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="cs-phone" placeholder="09XXXXXXXXX"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-add-conc-staff')">Cancel</button>
+            <button class="btn btn-primary" id="save-conc-staff-btn" onclick="App.saveConcStaff()">Add Staff</button>
+          </div>
+        </div>
+      </div>`;
+
+    try {
+      const res = await call('getConcStaff', state.token);
+      const users = res.users || [];
+      document.getElementById('conc-users-table').innerHTML = users.length
+        ? `<div class="table-wrap"><table>
+            <tr><th>Name</th><th>Email</th><th>ID Number</th><th>Actions</th></tr>
+            ${users.map(u => `
+              <tr>
+                <td><strong>${u.Name}</strong></td>
+                <td style="font-size:13px;">${u.Email}</td>
+                <td style="font-size:13px;">${u.IDNumber || '-'}</td>
+                <td><button class="btn btn-ghost btn-sm" onclick="App.deactivateUser('${u.UserID}','${u.Name}','${u.Status}')">Deactivate</button></td>
+              </tr>`).join('')}
+           </table></div>`
+        : `<div class="empty-state"><div class="empty-icon">👥</div><p>No staff accounts yet. Add one to get started.</p></div>`;
+    } catch { toast('Failed to load staff.', 'error'); }
+  }
+
+  function openConcAddUserModal() { openModal('modal-add-conc-staff'); }
+
+  async function saveConcStaff() {
+    const btn = document.getElementById('save-conc-staff-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('addConcStaff', state.token, {
+        name:     document.getElementById('cs-name').value,
+        email:    document.getElementById('cs-email').value,
+        idNumber: document.getElementById('cs-id').value,
+        phone:    document.getElementById('cs-phone').value
+      });
+      if (res.success) { closeModal('modal-add-conc-staff'); toast('Staff account added!'); renderConcUsers(); }
+      else toast(res.error, 'error');
+    } catch { toast('Failed.', 'error'); }
+    finally { setLoading(btn, false); }
+  }
+
   async function renderAdminUsers() {
     showPage('main');
     const el = document.getElementById('main-content');
@@ -1601,8 +1677,16 @@ var App = (() => {
               <div class="form-group"><label class="form-label">Email *</label><input class="form-control" id="u-email" type="email" placeholder="user@dlsl.edu.ph"></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label class="form-label">Role *</label><select class="form-control" id="u-role">${roles.map(r=>`<option value="${r}">${r}</option>`).join('')}</select></div>
+              <div class="form-group"><label class="form-label">Role *</label>
+                <select class="form-control" id="u-role" onchange="App._toggleStallField(this.value)">
+                  ${roles.map(r=>`<option value="${r}">${r}</option>`).join('')}
+                </select>
+              </div>
               <div class="form-group"><label class="form-label">ID Number</label><input class="form-control" id="u-id" placeholder="Student/Employee ID"></div>
+            </div>
+            <div class="form-group" id="u-stall-group" style="display:none;">
+              <label class="form-label">Assign to Stall *</label>
+              <select class="form-control" id="u-stall"><option value="">-- Select Stall --</option></select>
             </div>
             <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="u-phone" placeholder="09XXXXXXXXX"></div>
           </div>
@@ -1614,18 +1698,39 @@ var App = (() => {
       </div>`;
   }
 
-  function openAddUserModal() { openModal('modal-add-user'); }
+  async function openAddUserModal() {
+    openModal('modal-add-user');
+    // Pre-load stalls for concessionaire assignment
+    const stallSel = document.getElementById('u-stall');
+    if (stallSel && stallSel.options.length <= 1) {
+      try {
+        const stalls = await call('getConcessionaires', false);
+        (stalls || []).forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.StallID; opt.textContent = s.StallName;
+          stallSel.appendChild(opt);
+        });
+      } catch {}
+    }
+  }
+
+  function _toggleStallField(role) {
+    const group = document.getElementById('u-stall-group');
+    if (group) group.style.display = role === 'concessionaire' ? 'block' : 'none';
+  }
 
   async function saveUser() {
     const btn = document.getElementById('save-user-btn');
     setLoading(btn, true);
     try {
+      const role = document.getElementById('u-role').value;
       const res = await call('addUser', state.token, {
         name: document.getElementById('u-name').value,
         email: document.getElementById('u-email').value,
-        role: document.getElementById('u-role').value,
+        role,
         idNumber: document.getElementById('u-id').value,
-        phone: document.getElementById('u-phone').value
+        phone: document.getElementById('u-phone').value,
+        stallId: role === 'concessionaire' ? document.getElementById('u-stall').value : ''
       });
       if (res.success) { closeModal('modal-add-user'); toast('User added!'); renderAdminUsers(); }
       else toast(res.error,'error');
@@ -1883,7 +1988,8 @@ var App = (() => {
     openProductModal, saveProduct, toggleAvailability, deleteProduct,
     previewProductImage, previewFromURL,
     approveProduct,
-    openAddUserModal, saveUser, deactivateUser,
+    openAddUserModal, saveUser, deactivateUser, _toggleStallField,
+    renderConcUsers, openConcAddUserModal, saveConcStaff,
     openAddStallModal, saveStall, approveStall, previewStallImage,
     loadReport,
     openModal, closeModal

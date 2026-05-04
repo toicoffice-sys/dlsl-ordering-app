@@ -290,7 +290,7 @@ function getSheet(name) {
 
 function initSheetHeaders(sheet, name) {
   const map = {
-    [SHEETS.USERS]:           ['UserID','Name','Email','Role','IDNumber','Phone','Status','CreatedAt'],
+    [SHEETS.USERS]:           ['UserID','Name','Email','Role','IDNumber','Phone','Status','CreatedAt','StallID'],
     [SHEETS.CONCESSIONAIRES]: ['StallID','Email','StallName','Location','Description','OperatingHours','Status','Rating','TotalRatings','LogoURL','ApprovalStatus','CreatedAt'],
     [SHEETS.PRODUCTS]:        ['ProductID','StallID','StallName','Name','Category','Description','Price','Stock','ImageURL','IsAvailable','ApprovalStatus','CreatedAt'],
     [SHEETS.ORDERS]:          ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items','Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'],
@@ -322,8 +322,29 @@ function sheetToObjects(sheet) {
 }
 
 function getStallByEmail(email) {
-  const rows = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
-  return rows.find(r => (r.Email || '').toLowerCase() === email.toLowerCase()) || null;
+  const stalls = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
+  // Primary: stall's own email
+  const direct = stalls.find(r => (r.Email || '').toLowerCase() === email.toLowerCase());
+  if (direct) return direct;
+  // Secondary: staff user linked to a stall via StallID in Users sheet
+  const users = sheetToObjects(getSheet(SHEETS.USERS));
+  const user  = users.find(r =>
+    (r.Email || '').toLowerCase() === email.toLowerCase() &&
+    r.Role === ROLES.CONCESSIONAIRE && r.StallID
+  );
+  if (user) return stalls.find(r => r.StallID === user.StallID) || null;
+  return null;
+}
+
+function ensureUsersStallIdColumn() {
+  const sheet   = getSheet(SHEETS.USERS);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (!headers.includes('StallID')) {
+    const col = headers.length + 1;
+    const cell = sheet.getRange(1, col);
+    cell.setValue('StallID');
+    cell.setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold');
+  }
 }
 
 function getConcessionaires(activeOnly = true) {
