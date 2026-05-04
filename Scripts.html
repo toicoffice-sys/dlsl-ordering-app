@@ -1821,6 +1821,13 @@ var App = (() => {
         <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">RESGO Overview</p>
         <div class="stats-grid" id="admin-stats"><div class="loader"><div class="spinner"></div></div></div>
         <div style="margin-top:20px;" id="pending-section"></div>
+        <div style="margin-top:20px;padding:12px 16px;background:#F1F8E9;border:1px solid #C5E1A5;border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#1B5E20;">🔧 Sheet Maintenance</div>
+            <div style="font-size:12px;color:var(--text3);">Run once after updates to ensure all sheet columns are present (e.g. ProofURL, StallID).</div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="fix-headers-btn" onclick="App.fixHeaders()">Fix Sheet Headers</button>
+        </div>
       </div>`;
 
     try {
@@ -1849,6 +1856,17 @@ var App = (() => {
             </div>
           </div>`).join('')}` : '';
     } catch { toast('Dashboard error.','error'); }
+  }
+
+  async function fixHeaders() {
+    const btn = document.getElementById('fix-headers-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('fixSheetHeaders', state.token);
+      if (res.success) toast('Sheet headers fixed! Refresh the page.', 'success');
+      else toast(res.error, 'error');
+    } catch { toast('Failed.', 'error'); }
+    finally { setLoading(btn, false); }
   }
 
   async function approveProduct(productId, approved) {
@@ -2673,6 +2691,7 @@ var App = (() => {
     openAddUserModal, saveUser, deactivateUser, _toggleStallField,
     openEditUserModal, saveEditUser, _toggleEditStallField,
     renderConcUsers, openConcAddUserModal, saveConcStaff,
+    fixHeaders,
     openAddStallModal, saveStall, approveStall, previewStallImage,
     loadReport, renderConcReports, loadConcReport,
     doExportCSV, doPrintReport, doEmailReport,

@@ -340,6 +340,41 @@ function getSheet(name) {
   return sheet;
 }
 
+// One-time migration: add any columns missing from existing sheets
+// Call this from the Admin panel (fixSheetHeaders) or run manually once
+function patchSheetHeaders(sheet, name) {
+  const map = {
+    [SHEETS.ORDERS]: ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items','Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','ProofURL','PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'],
+    [SHEETS.USERS]:  ['UserID','Name','Email','Role','IDNumber','Phone','Status','CreatedAt','StallID'],
+    [SHEETS.AUDIT_LOG]:         ['LogID','Timestamp','UserEmail','Action','Module','RecordID','Details'],
+    [SHEETS.SCHEDULED_REPORTS]: ['ReportID','Name','Frequency','Recipients','LastSent','IsActive','CreatedAt']
+  };
+  const expected = map[name];
+  if (!expected) return;
+  const lastCol = sheet.getLastColumn();
+  if (lastCol >= expected.length) return; // all columns already present
+  const current = lastCol > 0
+    ? sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    : [];
+  for (let i = current.length; i < expected.length; i++) {
+    const cell = sheet.getRange(1, i + 1);
+    cell.setValue(expected[i])
+      .setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold');
+  }
+}
+
+// Admin endpoint: patch all sheets that may be missing new columns
+function fixSheetHeaders(token) {
+  const session = validateSession(token);
+  if (!session || session.role !== ROLES.ADMIN) return { success: false, error: 'Unauthorized.' };
+  const names = [SHEETS.ORDERS, SHEETS.USERS, SHEETS.AUDIT_LOG, SHEETS.SCHEDULED_REPORTS];
+  names.forEach(name => {
+    const sheet = getSheet(name);
+    patchSheetHeaders(sheet, name);
+  });
+  return { success: true, message: 'Sheet headers patched.' };
+}
+
 function initSheetHeaders(sheet, name) {
   const map = {
     [SHEETS.USERS]:           ['UserID','Name','Email','Role','IDNumber','Phone','Status','CreatedAt','StallID'],
