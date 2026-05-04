@@ -713,12 +713,15 @@ var App = (() => {
             <input class="form-control" id="payment-ref-${g.stallId}" placeholder="Enter GCash/Maya reference number" oninput="App._checkOrderReady()">
           </div>
           <div id="payment-proof-group-${g.stallId}" style="display:none;" class="form-group">
-            <label class="form-label" style="font-size:13px;">Proof of Payment</label>
-            <label class="proof-upload-area" for="payment-proof-file-${g.stallId}">
+            <label class="form-label" style="font-size:13px;">Proof of Payment *</label>
+            <label class="proof-upload-area" id="proof-upload-label-${g.stallId}" for="payment-proof-file-${g.stallId}">
               📎 Tap to upload screenshot
               <input type="file" accept="image/*" id="payment-proof-file-${g.stallId}" style="display:none;" onchange="App._proofSelected('${g.stallId}',this)">
             </label>
-            <div class="proof-file-name" id="proof-name-${g.stallId}"></div>
+            <div class="proof-file-name" id="proof-name-${g.stallId}" style="display:none;">
+              <span id="proof-name-text-${g.stallId}"></span>
+              <button type="button" onclick="App._clearProof('${g.stallId}')" style="margin-left:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;font-weight:600;">✕ Change</button>
+            </div>
           </div>
         </div>
       </div>`).join('');
@@ -907,8 +910,26 @@ var App = (() => {
   }
 
   function _proofSelected(stallId, input) {
-    const label = document.getElementById('proof-name-' + stallId);
-    if (label && input.files[0]) label.textContent = '✓ ' + input.files[0].name;
+    const nameBox  = document.getElementById('proof-name-' + stallId);
+    const nameText = document.getElementById('proof-name-text-' + stallId);
+    const uploadLabel = document.getElementById('proof-upload-label-' + stallId);
+    if (input.files[0]) {
+      if (nameText) nameText.textContent = '✓ ' + input.files[0].name;
+      if (nameBox)  nameBox.style.display = 'flex';
+      if (uploadLabel) uploadLabel.style.display = 'none';
+    }
+    _checkOrderReady();
+  }
+
+  function _clearProof(stallId) {
+    const fileInput   = document.getElementById('payment-proof-file-' + stallId);
+    const nameBox     = document.getElementById('proof-name-' + stallId);
+    const nameText    = document.getElementById('proof-name-text-' + stallId);
+    const uploadLabel = document.getElementById('proof-upload-label-' + stallId);
+    if (fileInput)   fileInput.value = '';
+    if (nameText)    nameText.textContent = '';
+    if (nameBox)     nameBox.style.display = 'none';
+    if (uploadLabel) uploadLabel.style.display = '';
     _checkOrderReady();
   }
 
@@ -1846,7 +1867,7 @@ var App = (() => {
     },
     navigateTo, doSearch, filterByCategory,
     addToCart, changeQty, removeCartItem, removeStallFromCart, placeOrder,
-    _toggleRef, _checkOrderReady, _proofSelected,
+    _toggleRef, _checkOrderReady, _proofSelected, _clearProof,
     cancelOrder, openRatingModal, selectStar, submitRating,
     updateStatus, verifyPayment, filterStallOrders,
     toggleStallOnline, openHoursModal,
