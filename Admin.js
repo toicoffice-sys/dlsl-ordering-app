@@ -98,6 +98,7 @@ function addConcessionaire(token, data) {
     (description || '').trim(), (operatingHours || '').trim(),
     'active', 0, 0, (logoUrl || '').trim(), APPROVAL.APPROVED, now()
   ]);
+  cacheBust('conc_true', 'conc_false');
 
   // Ensure user account exists
   const users = sheetToObjects(getSheet(SHEETS.USERS));
@@ -141,6 +142,7 @@ function updateConcessionaire(token, stallId, data) {
       const col = headers.indexOf(key);
       if (col >= 0 && val !== undefined) sheet.getRange(i + 1, col + 1).setValue(val);
     }
+    cacheBust('conc_true', 'conc_false');
     return { success: true };
   }
   return { success: false, error: 'Stall not found.' };
@@ -179,6 +181,7 @@ function approveConcessionaire(token, stallId, approved) {
     if (rows[i][0] !== stallId) continue;
     sheet.getRange(i + 1, headers.indexOf('ApprovalStatus') + 1).setValue(status);
     sheet.getRange(i + 1, headers.indexOf('Status') + 1).setValue(stallStatus);
+    cacheBust('conc_true', 'conc_false');
 
     const email     = rows[i][headers.indexOf('Email')];
     const stallName = rows[i][headers.indexOf('StallName')];
@@ -200,6 +203,7 @@ function addAnnouncement(token, title, body, expiresAt) {
     genId('ANN'), title.trim(), body.trim(),
     g.session.userData.name, now(), expiresAt || ''
   ]);
+  cacheBust('announcements');
   return { success: true };
 }
 
@@ -210,7 +214,11 @@ function deleteAnnouncement(token, annId) {
   const sheet = getSheet(SHEETS.ANNOUNCEMENTS);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === annId) { sheet.deleteRow(i + 1); return { success: true }; }
+    if (rows[i][0] === annId) {
+      sheet.deleteRow(i + 1);
+      cacheBust('announcements');
+      return { success: true };
+    }
   }
   return { success: false, error: 'Announcement not found.' };
 }

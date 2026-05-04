@@ -77,13 +77,17 @@ const APPROVAL = {
 function doGet(e) {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
-    .setTitle('DLSL Ordering App')
+    .setTitle('GreenBite')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
 }
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function getAppScript() {
+  return HtmlService.createTemplateFromFile('Scripts').getRawContent();
 }
 
 // ------------------------------------------------------------
@@ -318,12 +322,65 @@ function getStallByEmail(email) {
 }
 
 function getConcessionaires(activeOnly = true) {
-  const rows = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
-  return activeOnly ? rows.filter(r => r.Status === 'active' && r.ApprovalStatus === APPROVAL.APPROVED) : rows;
+  const key = 'conc_' + activeOnly;
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  const rows   = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
+  const result = activeOnly ? rows.filter(r => r.Status === 'active' && r.ApprovalStatus === APPROVAL.APPROVED) : rows;
+  cachePut(key, result);
+  return result;
 }
 
 function getAnnouncements() {
-  const rows = sheetToObjects(getSheet(SHEETS.ANNOUNCEMENTS));
-  const now_ = new Date();
-  return rows.filter(r => !r.ExpiresAt || new Date(r.ExpiresAt) > now_);
+  const hit = cacheGet('announcements');
+  if (hit) return hit;
+  const rows   = sheetToObjects(getSheet(SHEETS.ANNOUNCEMENTS));
+  const now_   = new Date();
+  const result = rows.filter(r => !r.ExpiresAt || new Date(r.ExpiresAt) > now_);
+  cachePut('announcements', result);
+  return result;
+}
+
+// ------------------------------------------------------------
+// Cache helpers (CacheService, 5-min TTL by default)
+// ------------------------------------------------------------
+
+function cacheGet(key) {
+  try {
+    const hit = CacheService.getScriptCache().get(key);
+    return hit ? JSON.parse(hit) : null;
+  } catch(e) { return null; }
+}
+
+function cachePut(key, data, ttl) {
+  try {
+    CacheService.getScriptCache().put(key, JSON.stringify(data), ttl || 300);
+  } catch(e) {}
+}
+
+function cacheBust(...keys) {
+  try { CacheService.getScriptCache().removeAll(keys); } catch(e) {}
+}
+
+// ------------------------------------------------------------
+// Maintenance: cleanup expired sessions + OTPs
+// ------------------------------------------------------------
+
+function cleanupExpiredRows() {
+  const now = new Date();
+  [{ name: SHEETS.SESSIONS, col: 4 }, { name: SHEETS.OTPS, col: 2 }].forEach(({ name, col }) => {
+    const sheet = getSheet(name);
+    const rows  = sheet.getDataRange().getValues();
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (new Date(rows[i][col]) <= now) sheet.deleteRow(i + 1);
+    }
+  });
+}
+
+function setupCleanupTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'cleanupExpiredRows') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('cleanupExpiredRows').timeBased().everyHours(1).create();
+  return { success: true, message: 'Cleanup trigger created — runs every hour.' };
 }

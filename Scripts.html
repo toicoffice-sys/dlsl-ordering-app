@@ -1,6 +1,6 @@
 <script>
 // ============================================================
-// DLSL Ordering App — Scripts.html
+// GreenBite — Scripts.html
 // SPA client logic: routing, state, API calls
 // ============================================================
 
@@ -8,7 +8,7 @@ var App = (() => {
   // ---- State ----
   let state = {
     token: null, user: null, role: null, stallData: null,
-    cart: [], cartStallId: null, cartStallName: null,
+    cart: [],
     view: 'login', subview: null,
     concessionaires: [], products: [], orders: [],
     currentStall: null, selectedOrder: null,
@@ -16,9 +16,9 @@ var App = (() => {
   };
 
   // ---- Persist token ----
-  function loadToken()  { return sessionStorage.getItem('dlsl_ordering_token'); }
-  function saveToken(t) { sessionStorage.setItem('dlsl_ordering_token', t); }
-  function clearToken() { sessionStorage.removeItem('dlsl_ordering_token'); }
+  function loadToken()  { return localStorage.getItem('dlsl_ordering_token'); }
+  function saveToken(t) { localStorage.setItem('dlsl_ordering_token', t); }
+  function clearToken() { localStorage.removeItem('dlsl_ordering_token'); }
 
   // ---- GAS caller ----
   function call(fn, ...args) {
@@ -81,6 +81,20 @@ var App = (() => {
   // AUTH
   // ================================================================
 
+  function initLoginListeners() {
+    var submitBtn = document.getElementById('login-submit-btn');
+    var emailInp  = document.getElementById('login-email');
+    var backBtn   = document.getElementById('otp-back-btn');
+    var otpSubmit = document.getElementById('otp-submit-btn');
+    var resendBtn = document.getElementById('resend-btn');
+    if (submitBtn) submitBtn.addEventListener('click', submitEmail);
+    if (emailInp)  emailInp.addEventListener('keydown', function(e){ if(e.key==='Enter') submitEmail(); });
+    if (backBtn)   backBtn.addEventListener('click', function() { renderLoginStep1(); });
+    if (otpSubmit) otpSubmit.addEventListener('click', function() { submitOTP(state.pendingEmail); });
+    if (resendBtn) resendBtn.addEventListener('click', function() { resendOTP(state.pendingEmail, state.pendingName); });
+    setupOTPInputs();
+  }
+
   async function init() {
     const t = loadToken();
     if (t) {
@@ -113,59 +127,42 @@ var App = (() => {
     navigateTo('home');
   }
 
-  // Step 1 — inject email form into #login-right
+  // Step 1 — show email step, hide OTP step
   function renderLoginStep1(error) {
-    document.getElementById('login-right').innerHTML = `
-      <div class="login-form-wrap">
-        <div class="lf-logo">
-          <div class="lf-logo-icon">D</div>
-          <div class="lf-logo-text">DLSL <span>Order</span></div>
-        </div>
-        <h1 class="lf-title">Sign in</h1>
-        <p class="lf-sub">Enter your DLSL email address to continue.</p>
-        ${error ? `<div class="lf-error">${error}</div>` : ''}
-        <div class="lf-group">
-          <label class="lf-label">Email address</label>
-          <input type="email" class="lf-input" id="login-email"
-            placeholder="yourname@dlsl.edu.ph" autocomplete="email">
-        </div>
-        <button class="lf-btn" id="login-submit-btn" onclick="App.submitEmail()">
-          Generate OTP &rarr;
-        </button>
-        <p class="lf-footer">Don't have an account?
-          <strong style="color:#2E7D32;">Contact RESGO</strong> to register.</p>
-      </div>`;
-    const inp = document.getElementById('login-email');
-    if (inp) { inp.addEventListener('keydown', function(e){ if(e.key==='Enter') App.submitEmail(); }); inp.focus(); }
+    var step1 = document.getElementById('login-step1');
+    var step2 = document.getElementById('login-step2');
+    var errEl = document.getElementById('login-error');
+    if (step1) step1.style.display = '';
+    if (step2) step2.style.display = 'none';
+    if (errEl) {
+      if (error) { errEl.textContent = error; errEl.style.display = ''; }
+      else        { errEl.style.display = 'none'; }
+    }
+    var inp = document.getElementById('login-email');
+    if (inp) inp.focus();
   }
 
-  // Step 2 — inject OTP form into #login-right
+  // Step 2 — show OTP step, hide email step
   function renderLoginStep2(email, name, error) {
-    document.getElementById('login-right').innerHTML = `
-      <div class="login-form-wrap">
-        <div class="lf-logo">
-          <div class="lf-logo-icon">D</div>
-          <div class="lf-logo-text">DLSL <span>Order</span></div>
-        </div>
-        <button class="lf-back" onclick="App.renderLoginStep1()">&#8592; Back</button>
-        <h1 class="lf-title">Enter the code</h1>
-        <p class="lf-sub">We sent a 6-digit code to</p>
-        <p class="lf-email-display">${email}</p>
-        ${error ? `<div class="lf-error">${error}</div>` : ''}
-        <div class="otp-group" id="otp-group">
-          ${[0,1,2,3,4,5].map(i=>`<input type="text" inputmode="numeric" maxlength="1" class="otp-input" id="otp-${i}">`).join('')}
-        </div>
-        <button class="lf-btn" id="otp-submit-btn" onclick="App.submitOTP('${email}')">
-          Verify &amp; Sign In
-        </button>
-        <div style="text-align:center;margin-top:14px;">
-          <button class="lf-resend" id="resend-btn" onclick="App.resendOTP('${email}','${name}')">
-            Didn't receive it? Resend code
-          </button>
-        </div>
-        <p class="lf-footer">Code expires in 10 minutes. Never share it with anyone.</p>
-      </div>`;
-    setupOTPInputs();
+    state.pendingEmail = email;
+    state.pendingName  = name;
+    var step1 = document.getElementById('login-step1');
+    var step2 = document.getElementById('login-step2');
+    var emailDisplay = document.getElementById('otp-email-display');
+    var errEl = document.getElementById('otp-error');
+    if (step1) step1.style.display = 'none';
+    if (step2) step2.style.display = '';
+    if (emailDisplay) emailDisplay.textContent = email;
+    if (errEl) {
+      if (error) { errEl.textContent = error; errEl.style.display = ''; }
+      else        { errEl.style.display = 'none'; }
+    }
+    for (var i = 0; i < 6; i++) {
+      var el = document.getElementById('otp-' + i);
+      if (el) el.value = '';
+    }
+    var first = document.getElementById('otp-0');
+    if (first) first.focus();
   }
 
   function setupOTPInputs() {
@@ -200,8 +197,8 @@ var App = (() => {
     try {
       var res = await call('requestAccess', email);
       if (res.success) { renderLoginStep2(email, res.name); }
-      else { renderLoginStep1(res.error); }
-    } catch(e) { renderLoginStep1('Connection error. Please try again.'); }
+      else { toast(res.error, 'error'); renderLoginStep1(res.error); }
+    } catch(e) { toast('Connection error. Please try again.', 'error'); renderLoginStep1('Connection error. Please try again.'); }
     finally { if(btn){btn.disabled=false; btn.textContent='Generate OTP →';} }
   }
 
@@ -236,7 +233,7 @@ var App = (() => {
 
   async function doLogout() {
     if (state.token) await call('logout', state.token).catch(()=>{});
-    state = { token:null, user:null, role:null, stallData:null, cart:[], cartStallId:null, cartStallName:null, view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null, pendingEmail:null, pendingName:null };
+    state = { token:null, user:null, role:null, stallData:null, cart:[], view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null, pendingEmail:null, pendingName:null };
     clearToken();
     document.getElementById('main-nav').style.display = 'none';
     document.getElementById('bottom-nav').style.display = 'none';
@@ -326,7 +323,7 @@ var App = (() => {
         <div class="hero-content">
           <div class="hero-greeting">${greeting}, ${name}!</div>
           <div class="hero-title">What are you craving today?</div>
-          <div class="hero-sub">Order from your favorite DLSL campus stalls.</div>
+          <div class="hero-sub">Order from your favorite campus stalls.</div>
           <div class="hero-search">
             <input id="search-input" type="search" placeholder="Search food, drinks, merchandise...">
             <button onclick="App.doSearch()">Search</button>
@@ -393,14 +390,40 @@ var App = (() => {
   // STALL VIEW
   // ================================================================
 
+  function clientCacheGet(key) {
+    try {
+      const entry = sessionStorage.getItem(key);
+      if (!entry) return null;
+      const { data, ts } = JSON.parse(entry);
+      if (Date.now() - ts > 5 * 60 * 1000) { sessionStorage.removeItem(key); return null; }
+      return data;
+    } catch(e) { return null; }
+  }
+
+  function clientCachePut(key, data) {
+    try { sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch(e) {}
+  }
+
+  function clientCacheBust(stallId) {
+    if (stallId) {
+      sessionStorage.removeItem('gb_p_' + stallId);
+    } else {
+      Object.keys(sessionStorage).filter(k => k.startsWith('gb_p_')).forEach(k => sessionStorage.removeItem(k));
+    }
+  }
+
   async function renderStallView(stallId) {
     showPage('main');
     const el = document.getElementById('main-content');
     el.innerHTML = `<div class="loader"><div class="spinner"></div><p>Loading menu...</p></div>`;
 
     try {
-      const stall    = state.concessionaires.find(s => s.StallID === stallId);
-      const products = await call('getProductsByStall', stallId);
+      const stall = state.concessionaires.find(s => s.StallID === stallId);
+      let products = clientCacheGet('gb_p_' + stallId);
+      if (!products) {
+        products = await call('getProductsByStall', stallId);
+        clientCachePut('gb_p_' + stallId, products);
+      }
       state.currentStall = stall;
 
       const categories = [...new Set(products.map(p => p.Category).filter(Boolean))];
@@ -472,14 +495,6 @@ var App = (() => {
   // ================================================================
 
   function addToCart(product) {
-    // Enforce single-stall cart
-    if (state.cartStallId && state.cartStallId !== product.StallID) {
-      if (!confirm(`Your cart has items from ${state.cartStallName}. Clear cart and add from ${product.StallName}?`)) return;
-      state.cart = [];
-    }
-    state.cartStallId   = product.StallID;
-    state.cartStallName = product.StallName;
-
     const existing = state.cart.find(i => i.ProductID === product.ProductID);
     if (existing) existing.qty++;
     else state.cart.push({ ...product, qty: 1 });
@@ -511,57 +526,96 @@ var App = (() => {
       return;
     }
 
-    const subtotal = state.cart.reduce((s,i) => s + (i.Price * i.qty), 0);
+    const stallGroups = getCartGroups();
+    const total       = state.cart.reduce((s,i) => s + (i.Price * i.qty), 0);
+    const count       = stallGroups.length;
+
+    const stallCards = stallGroups.map(g => `
+      <div class="card" id="cart-stall-${g.stallId}" style="margin-bottom:16px;">
+        <div class="card-header"><h2>🏪 ${g.stallName}</h2></div>
+        <div class="card-body" id="cart-items-${g.stallId}">${renderStallItems(g.items)}</div>
+        <div style="padding:12px 16px;border-top:1px solid var(--border);">
+          <div style="text-align:right;font-size:13px;color:var(--text2);margin-bottom:12px;">
+            Subtotal: <strong>${peso(g.items.reduce((s,i)=>s+i.Price*i.qty,0))}</strong>
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label" style="font-size:13px;">Payment Method</label>
+            <select class="form-control" id="payment-method-${g.stallId}" onchange="App._toggleRef('${g.stallId}',this.value)">
+              <option value="cash_on_pickup">Cash on Pickup</option>
+              <option value="gcash">GCash</option>
+              <option value="maya">Maya</option>
+            </select>
+          </div>
+          <div id="payment-ref-group-${g.stallId}" style="display:none;" class="form-group" style="margin-bottom:0;">
+            <label class="form-label" style="font-size:13px;">Reference Number</label>
+            <input class="form-control" id="payment-ref-${g.stallId}" placeholder="Enter GCash/Maya reference number">
+          </div>
+        </div>
+      </div>`).join('');
 
     el.innerHTML = `
       <div style="padding:20px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
           <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('home')">← Back</button>
           <h2 style="font-size:18px;font-weight:700;">Your Cart</h2>
+          ${count > 1 ? `<span style="background:var(--g100);color:var(--g800);font-size:12px;font-weight:600;padding:2px 10px;border-radius:12px;">${count} stalls</span>` : ''}
         </div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-header"><h2>🏪 ${state.cartStallName}</h2></div>
-          <div class="card-body" id="cart-items">${renderCartItems()}</div>
-        </div>
+        ${stallCards}
         <div class="card" style="margin-bottom:16px;">
           <div class="card-body">
             <div class="form-group">
-              <label class="form-label">Payment Method</label>
-              <select class="form-control" id="payment-method">
-                <option value="cash_on_pickup">Cash on Pickup</option>
-                <option value="gcash">GCash</option>
-                <option value="maya">Maya</option>
-              </select>
-            </div>
-            <div id="payment-ref-group" style="display:none;" class="form-group">
-              <label class="form-label">Reference Number</label>
-              <input class="form-control" id="payment-ref" placeholder="Enter GCash/Maya reference number">
-            </div>
-            <div class="form-group">
               <label class="form-label">Notes (optional)</label>
-              <input class="form-control" id="order-notes" placeholder="Special instructions...">
+              <input class="form-control" id="order-notes" placeholder="Special instructions for all stalls...">
             </div>
           </div>
         </div>
-        <div class="card">
+        <div class="card" id="cart-totals-card">
           <div class="card-body">
-            <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-              <span style="color:var(--text2);">Subtotal</span>
-              <span>${peso(subtotal)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-weight:700;font-size:17px;padding-top:12px;border-top:1px solid var(--border);">
-              <span>Total</span>
-              <span style="color:var(--g800);">${peso(subtotal)}</span>
-            </div>
-            <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()">Place Order</button>
+            ${renderTotalsBody(stallGroups, total)}
+            <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()">
+              Place ${count > 1 ? count + ' Orders' : 'Order'}
+            </button>
           </div>
         </div>
       </div>`;
+  }
 
-    document.getElementById('payment-method').addEventListener('change', function() {
-      const refGroup = document.getElementById('payment-ref-group');
-      refGroup.style.display = this.value !== 'cash_on_pickup' ? 'block' : 'none';
-    });
+  function getCartGroups() {
+    const stallIds = [...new Set(state.cart.map(i => i.StallID))];
+    return stallIds.map(sid => ({
+      stallId:   sid,
+      stallName: state.cart.find(i => i.StallID === sid).StallName,
+      items:     state.cart.filter(i => i.StallID === sid)
+    }));
+  }
+
+  function renderTotalsBody(stallGroups, total) {
+    const multi = stallGroups.length > 1;
+    const rows  = multi
+      ? stallGroups.map(g => `
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;color:var(--text2);">
+            <span>${g.stallName}</span>
+            <span>${peso(g.items.reduce((s,i)=>s+i.Price*i.qty,0))}</span>
+          </div>`).join('')
+      : '';
+    const sep = multi ? 'padding-top:12px;border-top:1px solid var(--border);margin-top:4px;' : '';
+    return rows + `
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:17px;${sep}">
+        <span>Total</span>
+        <span style="color:var(--g800);">${peso(total)}</span>
+      </div>`;
+  }
+
+  function updateCartTotalsDisplay() {
+    const card = document.getElementById('cart-totals-card');
+    if (!card) return;
+    const groups = getCartGroups();
+    const total  = state.cart.reduce((s,i) => s + (i.Price * i.qty), 0);
+    const body   = card.querySelector('.card-body');
+    if (body) body.innerHTML = renderTotalsBody(groups, total) + `
+      <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()">
+        Place ${groups.length > 1 ? groups.length + ' Orders' : 'Order'}
+      </button>`;
   }
 
   function maxQty(item) {
@@ -570,8 +624,8 @@ var App = (() => {
     return Math.min(stockLimit, 10);
   }
 
-  function renderCartItems() {
-    return state.cart.map(item => {
+  function renderStallItems(items) {
+    return items.map(item => {
       const max     = maxQty(item);
       const atMax   = item.qty >= max;
       const atMin   = item.qty <= 1;
@@ -603,12 +657,12 @@ var App = (() => {
     const item = state.cart.find(i => i.ProductID === productId);
     if (!item) return;
 
-    const max    = maxQty(item);
-    const newQty = item.qty + delta;
+    const max     = maxQty(item);
+    const newQty  = item.qty + delta;
+    const stallId = item.StallID;
 
     if (newQty <= 0) {
       state.cart = state.cart.filter(i => i.ProductID !== productId);
-      if (!state.cart.length) { state.cartStallId = null; state.cartStallName = null; }
     } else if (newQty > max) {
       toast(`Maximum of ${max} per order for this item.`, 'error');
       return;
@@ -617,50 +671,91 @@ var App = (() => {
     }
 
     updateCartBadge();
-    const el = document.getElementById('cart-items');
-    if (el) el.innerHTML = renderCartItems();
-    else renderCart();
+    const stallItems = state.cart.filter(i => i.StallID === stallId);
+    if (!stallItems.length) {
+      const section = document.getElementById('cart-stall-' + stallId);
+      if (section) section.remove();
+      if (!state.cart.length) { renderCart(); return; }
+    } else {
+      const el = document.getElementById('cart-items-' + stallId);
+      if (el) el.innerHTML = renderStallItems(stallItems);
+      // update per-stall subtotal
+      const subtotalEl = el && el.parentElement && el.parentElement.querySelector('div[style*="text-align:right"]');
+      if (subtotalEl) subtotalEl.innerHTML = `Subtotal: <strong>${peso(stallItems.reduce((s,i)=>s+i.Price*i.qty,0))}</strong>`;
+    }
+    updateCartTotalsDisplay();
+  }
+
+  function _toggleRef(stallId, method) {
+    const refGroup = document.getElementById('payment-ref-group-' + stallId);
+    if (refGroup) refGroup.style.display = method !== 'cash_on_pickup' ? 'block' : 'none';
   }
 
   async function placeOrder() {
-    const method = document.getElementById('payment-method')?.value;
-    const ref    = document.getElementById('payment-ref')?.value.trim();
     const notes  = document.getElementById('order-notes')?.value.trim();
+    const groups = getCartGroups();
 
-    if (!state.cart.length) { toast('Your cart is empty.','error'); return; }
-    if (method !== 'cash_on_pickup' && !ref) { toast('Please enter your payment reference number.','error'); return; }
+    if (!state.cart.length) { toast('Your cart is empty.', 'error'); return; }
+
+    for (const g of groups) {
+      const method = document.getElementById('payment-method-' + g.stallId)?.value;
+      const ref    = document.getElementById('payment-ref-' + g.stallId)?.value.trim();
+      if (method !== 'cash_on_pickup' && !ref) {
+        toast(`Enter payment reference for ${g.stallName}.`, 'error');
+        return;
+      }
+    }
 
     const btn = document.getElementById('place-order-btn');
     setLoading(btn, true);
     try {
-      const res = await call('placeOrder', state.token, {
-        stallId: state.cartStallId,
-        items: state.cart.map(i => ({ productId: i.ProductID, qty: i.qty })),
-        paymentMethod: method, paymentRef: ref, notes
-      });
+      const results = await Promise.all(groups.map(g => {
+        const method = document.getElementById('payment-method-' + g.stallId)?.value;
+        const ref    = document.getElementById('payment-ref-' + g.stallId)?.value.trim();
+        return call('placeOrder', state.token, {
+          stallId: g.stallId,
+          items: g.items.map(i => ({ productId: i.ProductID, qty: i.qty })),
+          paymentMethod: method, paymentRef: ref, notes
+        }).then(res => ({ ...res, stallName: g.stallName }));
+      }));
 
-      if (res.success) {
-        state.cart = []; state.cartStallId = null; state.cartStallName = null;
-        updateCartBadge();
-        showOrderSuccess(res.orderId, res.pickupCode, res.total);
-      } else { toast(res.error,'error'); }
-    } catch { toast('Failed to place order.','error'); }
+      const failed = results.filter(r => !r.success);
+      if (failed.length) { toast(failed[0].error || 'Some orders failed.', 'error'); return; }
+
+      state.cart = [];
+      updateCartBadge();
+      showOrderSuccess(results);
+    } catch { toast('Failed to place orders.', 'error'); }
     finally { setLoading(btn, false); }
   }
 
-  function showOrderSuccess(orderId, pickupCode, total) {
-    const el = document.getElementById('main-content');
+  function showOrderSuccess(results) {
+    const el    = document.getElementById('main-content');
+    const multi = results.length > 1;
+    const grandTotal = results.reduce((s, r) => s + (r.total || 0), 0);
+
+    const codes = results.map(r => `
+      <div class="pickup-box" style="max-width:280px;margin:0 auto 16px;">
+        ${multi ? `<div style="font-size:12px;font-weight:600;color:var(--g700);margin-bottom:4px;">🏪 ${r.stallName}</div>` : ''}
+        <div class="pickup-label">Pickup Code</div>
+        <div class="pickup-code">${r.pickupCode}</div>
+        <div style="font-size:12px;color:var(--text2);">Show this when you pick up</div>
+      </div>`).join('');
+
+    const meta = results.map(r =>
+      `${r.stallName}: ${peso(r.total)}`
+    ).join(' &nbsp;|&nbsp; ');
+
     el.innerHTML = `
       <div style="padding:30px 20px;text-align:center;">
         <div style="font-size:64px;margin-bottom:16px;">✅</div>
-        <h2 style="font-size:22px;font-weight:800;color:var(--g800);">Order Placed!</h2>
-        <p style="color:var(--text2);margin:8px 0 24px;">Your order has been sent to the stall.</p>
-        <div class="pickup-box" style="max-width:280px;margin:0 auto 24px;">
-          <div class="pickup-label">Pickup Code</div>
-          <div class="pickup-code">${pickupCode}</div>
-          <div style="font-size:12px;color:var(--text2);">Show this when you pick up your order</div>
-        </div>
-        <p style="font-size:13px;color:var(--text3);">Order ID: ${orderId} &nbsp;|&nbsp; Total: ${peso(total)}</p>
+        <h2 style="font-size:22px;font-weight:800;color:var(--g800);">${multi ? 'Orders Placed!' : 'Order Placed!'}</h2>
+        <p style="color:var(--text2);margin:8px 0 24px;">
+          ${multi ? `Your ${results.length} orders have been sent to the stalls.` : 'Your order has been sent to the stall.'}
+        </p>
+        ${codes}
+        <p style="font-size:13px;color:var(--text3);margin-top:8px;">${meta}</p>
+        ${multi ? `<p style="font-size:14px;font-weight:700;color:var(--g800);margin-top:4px;">Grand Total: ${peso(grandTotal)}</p>` : ''}
         <div style="display:flex;gap:10px;justify-content:center;margin-top:24px;">
           <button class="btn btn-outline" onclick="App.navigateTo('orders')">View Orders</button>
           <button class="btn btn-primary" onclick="App.navigateTo('home')">Back to Home</button>
@@ -1030,7 +1125,7 @@ var App = (() => {
         stock:       document.getElementById('p-stock').value,
         imageUrl
       });
-      if (res.success) { closeModal('modal-product'); toast('✓ Submitted for approval!'); renderConcProducts(); }
+      if (res.success) { clientCacheBust(state.stallData?.StallID); closeModal('modal-product'); toast('✓ Submitted for approval!'); renderConcProducts(); }
       else toast(res.error, 'error');
     } catch (e) { toast(e.message || 'Failed to save.', 'error'); }
     finally { setLoading(btn, false); }
@@ -1038,14 +1133,14 @@ var App = (() => {
 
   async function toggleAvailability(productId, available) {
     const res = await call('toggleProductAvailability', state.token, productId, available).catch(()=>null);
-    if (res?.success) { toast(available ? 'Item visible.' : 'Item hidden.'); renderConcProducts(); }
+    if (res?.success) { clientCacheBust(state.stallData?.StallID); toast(available ? 'Item visible.' : 'Item hidden.'); renderConcProducts(); }
     else toast('Failed to update.','error');
   }
 
   async function deleteProduct(productId) {
     if (!confirm('Delete this product?')) return;
     const res = await call('deleteProduct', state.token, productId).catch(()=>null);
-    if (res?.success) { toast('Product deleted.'); renderConcProducts(); }
+    if (res?.success) { clientCacheBust(state.stallData?.StallID); toast('Product deleted.'); renderConcProducts(); }
     else toast('Failed to delete.','error');
   }
 
@@ -1148,7 +1243,7 @@ var App = (() => {
   async function approveProduct(productId, approved) {
     const reason = approved ? '' : prompt('Reason for rejection (optional):') || '';
     const res = await call('approveProduct', state.token, productId, approved, reason).catch(()=>null);
-    if (res?.success) { toast(approved ? 'Product approved.' : 'Product rejected.'); renderAdminDashboard(); }
+    if (res?.success) { clientCacheBust(); toast(approved ? 'Product approved.' : 'Product rejected.'); renderAdminDashboard(); }
     else toast(res?.error || 'Failed.','error');
   }
 
@@ -1461,8 +1556,14 @@ var App = (() => {
   // ================================================================
   return {
     init, submitEmail, submitOTP, resendOTP, renderLoginStep1, renderLoginStep2, doLogout,
+    bootFromLogin: function(res) {
+      state.token = res.token;
+      if (!res.role && res.user) res = Object.assign({}, res, { role: res.user.role });
+      bootSession(res);
+    },
     navigateTo, doSearch, filterByCategory,
     addToCart, changeQty, placeOrder,
+    _toggleRef,
     cancelOrder, openRatingModal, selectStar, submitRating,
     updateStatus, filterStallOrders,
     openProductModal, saveProduct, toggleAvailability, deleteProduct, openHoursModal,
@@ -1475,9 +1576,11 @@ var App = (() => {
   };
 })();
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', App.init);
-} else {
-  App.init();
+if (!window.__GBDynamicLoad) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', App.init);
+  } else {
+    App.init();
+  }
 }
 </script>

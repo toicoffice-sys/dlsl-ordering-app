@@ -8,12 +8,17 @@
 // ------------------------------------------------------------
 
 function getProductsByStall(stallId) {
-  const rows = sheetToObjects(getSheet(SHEETS.PRODUCTS));
-  return rows.filter(r =>
+  const key = 'products_' + stallId;
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  const rows   = sheetToObjects(getSheet(SHEETS.PRODUCTS));
+  const result = rows.filter(r =>
     r.StallID === stallId &&
     r.ApprovalStatus === APPROVAL.APPROVED &&
     r.IsAvailable === true
   );
+  cachePut(key, result);
+  return result;
 }
 
 function searchProducts(query) {
@@ -78,6 +83,7 @@ function addProduct(token, data) {
   };
 
   getSheet(SHEETS.PRODUCTS).appendRow(Object.values(product));
+  cacheBust('products_' + stall.StallID, 'conc_true', 'conc_false');
 
   if (session.role !== ROLES.ADMIN) {
     notifyAdminMenuSubmission(stall.StallName, product.Name);
@@ -122,6 +128,7 @@ function updateProduct(token, productId, data) {
       sheet.getRange(i + 1, approvalCol + 1).setValue(APPROVAL.PENDING);
     }
 
+    cacheBust('products_' + rows[i][headers.indexOf('StallID')], 'conc_true', 'conc_false');
     return { success: true };
   }
   return { success: false, error: 'Product not found.' };
@@ -144,6 +151,7 @@ function deleteProduct(token, productId) {
       return { success: false, error: 'Unauthorized.' };
 
     sheet.deleteRow(i + 1);
+    cacheBust('products_' + stallId, 'conc_true', 'conc_false');
     return { success: true };
   }
   return { success: false, error: 'Product not found.' };
@@ -166,6 +174,7 @@ function toggleProductAvailability(token, productId, isAvailable) {
       return { success: false, error: 'Unauthorized.' };
 
     sheet.getRange(i + 1, headers.indexOf('IsAvailable') + 1).setValue(isAvailable);
+    cacheBust('products_' + rows[i][headers.indexOf('StallID')]);
     return { success: true };
   }
   return { success: false, error: 'Product not found.' };
@@ -187,10 +196,12 @@ function approveProduct(token, productId, approved, reason) {
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] !== productId) continue;
 
-    const status = approved ? APPROVAL.APPROVED : APPROVAL.REJECTED;
+    const status  = approved ? APPROVAL.APPROVED : APPROVAL.REJECTED;
+    const stallId = rows[i][headers.indexOf('StallID')];
     sheet.getRange(i + 1, headers.indexOf('ApprovalStatus') + 1).setValue(status);
+    cacheBust('products_' + stallId, 'conc_true', 'conc_false');
 
-    const stallEmail = getConcessionaireEmailByStallId(rows[i][headers.indexOf('StallID')]);
+    const stallEmail = getConcessionaireEmailByStallId(stallId);
     if (stallEmail) notifyProductApproval(stallEmail, rows[i][headers.indexOf('Name')], status, reason);
 
     return { success: true };

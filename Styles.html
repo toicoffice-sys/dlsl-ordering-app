@@ -4,21 +4,21 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --g900: #1B5E20;
-  --g800: #2E7D32;
-  --g700: #388E3C;
-  --g600: #43A047;
-  --g100: #E8F5E9;
-  --g50:  #F1F8E9;
-  --gold: #C9A84C;
-  --gold-light: #FDF6E3;
+  --g900: #1A4D2A;
+  --g800: #2A7A40;
+  --g700: #35944E;
+  --g600: #43AF60;
+  --g100: #E4F5E9;
+  --g50:  #EFF9F3;
+  --gold: #F0C040;
+  --gold-light: #FDF8E0;
   --surface: #FFFFFF;
-  --surface2: #F7F8FA;
-  --surface3: #EDEEF0;
-  --border: #E8E9EB;
-  --text: #1A1A2E;
-  --text2: #555770;
-  --text3: #9B9DB0;
+  --surface2: #F8F7F2;
+  --surface3: #EFEEEA;
+  --border: #E4E3DF;
+  --text: #1A1A1A;
+  --text2: #505565;
+  --text3: #9898AA;
   --danger: #D32F2F;
   --danger-bg: #FFF5F5;
   --warn: #E65100;
@@ -684,26 +684,11 @@ select.form-control {
   display: flex;
   align-items: flex-end;
   min-height: 100vh;
+  background-color: var(--g900);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
-
-/* Food mosaic grid */
-.login-mosaic {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(4, 1fr);
-}
-.mosaic-tile {
-  background: var(--c, var(--g900));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(40px, 5vw, 72px);
-  filter: saturate(.7);
-  transition: filter .3s;
-}
-.mosaic-tile:hover { filter: saturate(1.1); }
 
 /* Gradient overlay for readability */
 .login-overlay {
