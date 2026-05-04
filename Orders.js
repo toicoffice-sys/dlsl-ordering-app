@@ -13,7 +13,7 @@ function placeOrder(token, orderData) {
   const session = validateSession(token);
   if (!session) return { success: false, error: 'Session expired.' };
 
-  const { stallId, items, paymentMethod, paymentRef, notes } = orderData || {};
+  const { stallId, items, paymentMethod, paymentRef, notes, proofData, proofMimeType } = orderData || {};
 
   if (!stallId || !items || !items.length)
     return { success: false, error: 'Stall and items are required.' };
@@ -70,6 +70,11 @@ function placeOrder(token, orderData) {
 
   const payStatus = paymentMethod === 'cash_on_pickup' ? 'pending' : 'awaiting_confirmation';
 
+  // Upload proof of payment to Drive if provided
+  const proofUrl = (paymentMethod !== 'cash_on_pickup' && proofData)
+    ? savePaymentProof(proofData, proofMimeType, `proof_${orderId}.${(proofMimeType||'image/jpeg').split('/')[1]}`)
+    : '';
+
   getSheet(SHEETS.ORDERS).appendRow([
     orderId,
     session.email,
@@ -82,6 +87,7 @@ function placeOrder(token, orderData) {
     total,
     paymentMethod,
     paymentRef || '',
+    proofUrl,
     payStatus,
     ORDER_STATUS.PENDING,
     pickupCode,

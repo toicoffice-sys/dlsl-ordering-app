@@ -8,8 +8,22 @@
 //   v1.0.0 - 2026-05-04 - Move SPREADSHEET_ID to PropertiesService (security fix)
 // ============================================================
 
-const SPREADSHEET_ID   = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-const IMAGES_FOLDER_NAME = 'DLSL Ordering App — Images';
+const SPREADSHEET_ID        = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+const IMAGES_FOLDER_NAME    = 'DLSL Ordering App — Images';
+const PROOFS_FOLDER_NAME    = 'DLSL Ordering App — Payment Proofs';
+
+function savePaymentProof(base64Data, mimeType, filename) {
+  if (!base64Data) return '';
+  try {
+    const folders = DriveApp.getFoldersByName(PROOFS_FOLDER_NAME);
+    const folder  = folders.hasNext() ? folders.next() : DriveApp.createFolder(PROOFS_FOLDER_NAME);
+    const decoded = Utilities.base64Decode(base64Data);
+    const blob    = Utilities.newBlob(decoded, mimeType || 'image/jpeg', filename || 'proof.jpg');
+    const file    = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+  } catch (e) { return ''; }
+}
 
 // ------------------------------------------------------------
 // Image upload to Google Drive
@@ -293,7 +307,7 @@ function initSheetHeaders(sheet, name) {
     [SHEETS.USERS]:           ['UserID','Name','Email','Role','IDNumber','Phone','Status','CreatedAt','StallID'],
     [SHEETS.CONCESSIONAIRES]: ['StallID','Email','StallName','Location','Description','OperatingHours','Status','Rating','TotalRatings','LogoURL','ApprovalStatus','CreatedAt'],
     [SHEETS.PRODUCTS]:        ['ProductID','StallID','StallName','Name','Category','Description','Price','Stock','ImageURL','IsAvailable','ApprovalStatus','CreatedAt'],
-    [SHEETS.ORDERS]:          ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items','Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'],
+    [SHEETS.ORDERS]:          ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items','Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','ProofURL','PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'],
     [SHEETS.RATINGS]:         ['RatingID','CustomerEmail','StallID','OrderID','Stars','Comment','CreatedAt'],
     [SHEETS.SESSIONS]:        ['Token','Email','Role','UserData','ExpiresAt'],
     [SHEETS.OTPS]:            ['Email','OTP','ExpiresAt','Attempts','SentAt'],

@@ -1003,13 +1003,28 @@ var App = (() => {
     const btn = document.getElementById('place-order-btn');
     setLoading(btn, true);
     try {
-      const results = await Promise.all(groups.map(g => {
+      const results = await Promise.all(groups.map(async g => {
         const method = document.getElementById('payment-method-' + g.stallId)?.value;
         const ref    = document.getElementById('payment-ref-' + g.stallId)?.value.trim();
+        const proofInput = document.getElementById('payment-proof-file-' + g.stallId);
+        const proofFile  = proofInput && proofInput.files[0];
+
+        let proofData = '', proofMimeType = '';
+        if (method !== 'cash_on_pickup' && proofFile) {
+          proofMimeType = proofFile.type || 'image/jpeg';
+          const b64 = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = e => res(e.target.result.split(',')[1]); // strip data:...;base64,
+            r.onerror = rej;
+            r.readAsDataURL(proofFile);
+          });
+          proofData = b64;
+        }
+
         return call('placeOrder', state.token, {
           stallId: g.stallId,
           items: g.items.map(i => ({ productId: i.ProductID, qty: i.qty })),
-          paymentMethod: method, paymentRef: ref, notes
+          paymentMethod: method, paymentRef: ref, notes, proofData, proofMimeType
         }).then(res => ({ ...res, stallName: g.stallName }));
       }));
 
@@ -1250,6 +1265,7 @@ var App = (() => {
       <div style="margin:6px 0;font-size:13px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
         <span style="color:var(--text3);">${o.PaymentMethod === 'gcash' ? 'GCash' : 'Maya'} Ref:</span>
         <strong>${o.PaymentRef || '—'}</strong>
+        ${o.ProofURL ? `<a href="${o.ProofURL}" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;">🖼️ View Proof</a>` : ''}
         ${isVerified
           ? `<span class="verified-badge">✓ Payment Verified</span>`
           : `<button class="btn btn-outline btn-sm" onclick="App.verifyPayment('${o.OrderID}')">✅ Verify Payment</button>
