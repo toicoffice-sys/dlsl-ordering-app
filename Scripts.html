@@ -288,9 +288,11 @@ var App = (() => {
   // ================================================================
 
   function setupNavForRole(role) {
-    const tabs = document.getElementById('bottom-tabs');
+    const tabs     = document.getElementById('bottom-tabs');
     const navItems = document.getElementById('top-nav-items');
-    if (!tabs || !navItems) return;
+    const sidebar  = document.getElementById('sidebar');
+    const bottomNav = document.getElementById('bottom-nav');
+    const cartBtn  = document.getElementById('topnav-cart');
 
     const customerTabs = [
       { id:'home',      icon:'🏠', label:'Home' },
@@ -298,37 +300,65 @@ var App = (() => {
       { id:'orders',    icon:'📦', label:'Orders' },
       { id:'profile',   icon:'👤', label:'Profile' }
     ];
-    const concTabs = [
-      { id:'home',     icon:'📊', label:'Dashboard' },
-      { id:'products', icon:'🍽️', label:'Menu' },
-      { id:'orders',   icon:'📦', label:'Orders' },
-      { id:'users',    icon:'👥', label:'Users' }
-    ];
-    const adminTabs = [
-      { id:'home',    icon:'📊', label:'Dashboard' },
-      { id:'users',   icon:'👥', label:'Users' },
-      { id:'stalls',  icon:'🏪', label:'Stalls' },
-      { id:'reports', icon:'📈', label:'Reports' }
-    ];
 
-    const tabList = role === 'admin' ? adminTabs : role === 'concessionaire' ? concTabs : customerTabs;
+    if (role === 'admin' || role === 'concessionaire') {
+      // ---- Left sidebar for staff roles ----
+      if (bottomNav)  bottomNav.style.display = 'none';
+      if (cartBtn)    cartBtn.style.display    = 'none';
+      if (navItems)   navItems.innerHTML        = '';
 
-    tabs.innerHTML = tabList.map(t => `
-      <button class="tab-btn" data-nav="${t.id}" onclick="App.navigateTo('${t.id}')">
-        <span class="tab-icon">${t.icon}</span>
-        <span>${t.label}</span>
-      </button>`).join('');
+      const adminSections = [
+        { label: 'Main', items: [
+          { id:'home',    icon:'📊', label:'Dashboard' },
+          { id:'users',   icon:'👥', label:'Users' },
+          { id:'stalls',  icon:'🏪', label:'Stalls' },
+          { id:'reports', icon:'📈', label:'Reports' }
+        ]}
+      ];
+      const concSections = [
+        { label: 'My Stall', items: [
+          { id:'home',     icon:'📊', label:'Dashboard' },
+          { id:'products', icon:'🍽️', label:'Menu' },
+          { id:'orders',   icon:'📦', label:'Orders' },
+          { id:'users',    icon:'👥', label:'Staff' }
+        ]}
+      ];
 
-    // Customers: no top nav buttons (bottom nav handles navigation)
-    const topNavList = (role === 'admin' || role === 'concessionaire') ? tabList : [];
-    navItems.innerHTML = topNavList.map(t =>
-      `<button class="topnav-btn" onclick="App.navigateTo('${t.id}')">${t.label}</button>`
-    ).join('');
+      const sections = role === 'admin' ? adminSections : concSections;
+      if (sidebar) {
+        sidebar.style.display = 'flex';
+        document.getElementById('sidebar-content').innerHTML = sections.map(sec => `
+          <div class="sidebar-section">${sec.label}</div>
+          ${sec.items.map(t => `
+            <div class="sidebar-nav-item" data-nav="${t.id}" onclick="App.navigateTo('${t.id}')">
+              <span class="sni-icon">${t.icon}</span>
+              <span>${t.label}</span>
+            </div>`).join('')}
+        `).join('');
+      }
+      // No bottom tabs needed
+      if (tabs) tabs.innerHTML = '';
+
+    } else {
+      // ---- Bottom nav for customers ----
+      if (sidebar)    sidebar.style.display    = 'none';
+      if (cartBtn)    cartBtn.style.display     = '';
+      if (navItems)   navItems.innerHTML         = '';
+
+      if (tabs) {
+        tabs.innerHTML = customerTabs.map(t => `
+          <button class="tab-btn" data-nav="${t.id}" onclick="App.navigateTo('${t.id}')">
+            <span class="tab-icon">${t.icon}</span>
+            <span>${t.label}</span>
+          </button>`).join('');
+      }
+    }
   }
 
   function navigateTo(view, params) {
     state.view = view;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.nav === view));
+    document.querySelectorAll('.sidebar-nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === view));
 
     switch (view) {
       case 'home':
