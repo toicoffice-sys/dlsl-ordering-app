@@ -896,8 +896,10 @@ var App = (() => {
     const ready = groups.every(g => {
       const method = document.getElementById('payment-method-' + g.stallId)?.value;
       if (method === 'cash_on_pickup') return true;
-      const ref = (document.getElementById('payment-ref-' + g.stallId)?.value || '').trim();
-      return ref.length > 0;
+      const ref   = (document.getElementById('payment-ref-' + g.stallId)?.value || '').trim();
+      const proof = document.getElementById('payment-proof-file-' + g.stallId);
+      const hasProof = proof && proof.files && proof.files.length > 0;
+      return ref.length > 0 && hasProof;
     });
     btn.disabled = !ready;
     if (hint) hint.style.display = ready ? 'none' : 'block';
@@ -917,8 +919,14 @@ var App = (() => {
     for (const g of groups) {
       const method = document.getElementById('payment-method-' + g.stallId)?.value;
       const ref    = document.getElementById('payment-ref-' + g.stallId)?.value.trim();
+      const proof  = document.getElementById('payment-proof-file-' + g.stallId);
+      const hasProof = proof && proof.files && proof.files.length > 0;
       if (method !== 'cash_on_pickup' && !ref) {
         toast(`Enter payment reference for ${g.stallName}.`, 'error');
+        return;
+      }
+      if (method !== 'cash_on_pickup' && !hasProof) {
+        toast(`Upload proof of payment for ${g.stallName}.`, 'error');
         return;
       }
     }
