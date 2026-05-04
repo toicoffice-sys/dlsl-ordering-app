@@ -201,15 +201,27 @@ function confirmPayment(token, orderId) {
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] !== orderId) continue;
 
-    const stallId  = rows[i][headers.indexOf('StallID')];
-    const ownStall = getStallByEmail(session.email);
-    const isAdmin  = session.role === ROLES.ADMIN;
+    const stallId       = rows[i][headers.indexOf('StallID')];
+    const ownStall      = getStallByEmail(session.email);
+    const isAdmin       = session.role === ROLES.ADMIN;
 
     if (!isAdmin && ownStall?.StallID !== stallId)
       return { success: false, error: 'Unauthorized.' };
 
+    const customerEmail = rows[i][headers.indexOf('CustomerEmail')];
+    const customerName  = rows[i][headers.indexOf('CustomerName')];
+    const stallName     = rows[i][headers.indexOf('StallName')];
+    const pickupCode    = rows[i][headers.indexOf('PickupCode')];
+
+    // Mark payment as paid and auto-confirm the order
     sheet.getRange(i + 1, headers.indexOf('PaymentStatus') + 1).setValue('paid');
+    sheet.getRange(i + 1, headers.indexOf('Status') + 1).setValue(ORDER_STATUS.CONFIRMED);
     sheet.getRange(i + 1, headers.indexOf('UpdatedAt') + 1).setValue(now());
+
+    // Notify customer: payment verified + order confirmed
+    notifyPaymentVerified(customerEmail, customerName, orderId, stallName);
+    notifyOrderStatusUpdate(customerEmail, customerName, orderId, stallName, ORDER_STATUS.CONFIRMED, pickupCode, 'Your payment has been verified. Your order is now confirmed and will be prepared shortly.');
+
     return { success: true };
   }
   return { success: false, error: 'Order not found.' };

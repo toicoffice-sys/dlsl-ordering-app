@@ -1196,15 +1196,23 @@ var App = (() => {
       `<button class="btn btn-primary btn-sm" onclick="App.updateStatus('${o.OrderID}','${s}')">${l}</button>`
     ).join('');
 
-    const isEwallet   = o.PaymentMethod !== 'cash_on_pickup';
-    const isVerified  = o.PaymentStatus === 'paid';
+    const isEwallet        = o.PaymentMethod !== 'cash_on_pickup';
+    const isVerified       = o.PaymentStatus === 'paid';
+    const awaitingPayment  = isEwallet && !isVerified;
+
     const payRow = isEwallet ? `
-      <div style="margin:6px 0;font-size:13px;">
-        <span style="color:var(--text3);">Ref:</span> <strong>${o.PaymentRef || '—'}</strong>
+      <div style="margin:6px 0;font-size:13px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+        <span style="color:var(--text3);">${o.PaymentMethod === 'gcash' ? 'GCash' : 'Maya'} Ref:</span>
+        <strong>${o.PaymentRef || '—'}</strong>
         ${isVerified
-          ? `<span class="verified-badge" style="margin-left:8px;">✓ Verified</span>`
-          : `<button class="btn btn-outline btn-sm" style="margin-left:8px;" onclick="App.verifyPayment('${o.OrderID}')">Verify Payment</button>`}
-      </div>` : '';
+          ? `<span class="verified-badge">✓ Payment Verified</span>`
+          : `<button class="btn btn-outline btn-sm" onclick="App.verifyPayment('${o.OrderID}')">✅ Verify Payment</button>`}
+      </div>
+      ${awaitingPayment ? `<div style="background:#FFF8E1;border-left:3px solid #F9A825;padding:7px 10px;font-size:12px;color:#5D4037;border-radius:4px;margin-bottom:6px;">⚠️ Verify payment before processing this order.</div>` : ''}
+    ` : '';
+
+    // Block status actions for unverified e-wallet orders
+    const displayActions = awaitingPayment ? '' : actions;
 
     return `
       <div class="order-item" style="margin-bottom:10px;">
@@ -1219,7 +1227,7 @@ var App = (() => {
           <span class="order-id">${o.OrderID}</span>
           <span style="background:var(--g100);color:var(--g800);font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;">Code: ${o.PickupCode}</span>
           <span class="order-total">${peso(o.Total)}</span>
-          ${actions}
+          ${displayActions}
         </div>
       </div>`;
   }

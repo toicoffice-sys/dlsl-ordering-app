@@ -160,6 +160,21 @@ function notifyOrderStatusUpdate(email, name, orderId, stallName, status, pickup
   MailApp.sendEmail({ to: email, subject: `${subjects[status] || 'Order Update'} — ${orderId}`, htmlBody: body });
 }
 
+// Payment verified — notify customer
+function notifyPaymentVerified(email, name, orderId, stallName) {
+  if (!email) return;
+  const body = emailWrapper(`
+    <p>Hello, <strong>${name}</strong>!</p>
+    <p>Great news! Your payment for order <strong>${orderId}</strong> at <strong>${stallName}</strong> has been <strong>verified</strong> by the concessionaire.</p>
+    <div style="background:#E8F5E9;border-radius:8px;padding:16px;text-align:center;margin:16px 0;">
+      <p style="margin:0;font-size:15px;font-weight:bold;color:${APP_COLOR};">✅ Payment Verified</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#555;">Your order is now being prepared. We'll notify you when it's ready for pickup.</p>
+    </div>
+    <p style="color:#757575;font-size:13px;">Log in to the app to track your order status.</p>
+  `);
+  MailApp.sendEmail({ to: email, subject: `Payment Verified — Order ${orderId}`, htmlBody: body });
+}
+
 // Product approval notification
 function notifyProductApproval(email, productName, status, reason) {
   const approved = status === APPROVAL.APPROVED;
