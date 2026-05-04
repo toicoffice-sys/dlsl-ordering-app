@@ -317,9 +317,11 @@ var App = (() => {
 
       const adminSections = [
         { label: 'Main', items: [
-          { id:'home',      icon:'📊', label:'Dashboard' },
-          { id:'users',     icon:'👥', label:'Users' },
-          { id:'stalls',    icon:'🏪', label:'Stalls' }
+          { id:'home',         icon:'📊', label:'Dashboard' },
+          { id:'users',        icon:'👥', label:'Users' },
+          { id:'stalls',       icon:'🏪', label:'Stalls' },
+          { id:'orders',       icon:'📦', label:'Orders' },
+          { id:'transactions', icon:'💳', label:'Transactions' }
         ]},
         { label: 'Reports', items: [
           { id:'reports',   icon:'📈', label:'Sales Reports' },
@@ -332,11 +334,12 @@ var App = (() => {
       ];
       const concSections = [
         { label: 'My Stall', items: [
-          { id:'home',     icon:'📊', label:'Dashboard' },
-          { id:'products', icon:'🍽️', label:'Menu' },
-          { id:'orders',   icon:'📦', label:'Orders' },
-          { id:'reports',  icon:'📈', label:'Reports' },
-          { id:'users',    icon:'👥', label:'Staff' }
+          { id:'home',         icon:'📊', label:'Dashboard' },
+          { id:'products',     icon:'🍽️', label:'Menu' },
+          { id:'orders',       icon:'📦', label:'Orders' },
+          { id:'transactions', icon:'💳', label:'Transactions' },
+          { id:'reports',      icon:'📈', label:'Reports' },
+          { id:'users',        icon:'👥', label:'Staff' }
         ]}
       ];
 
@@ -399,9 +402,10 @@ var App = (() => {
         if (state.role === 'admin') renderAdminReports();
         else renderConcReports();
         break;
-      case 'analytics':  renderAnalytics();        break;
-      case 'audit':      renderAuditLog();          break;
-      case 'scheduled':  renderScheduledReports();  break;
+      case 'analytics':     renderAnalytics();        break;
+      case 'audit':         renderAuditLog();          break;
+      case 'scheduled':     renderScheduledReports();  break;
+      case 'transactions':  renderTransactions();       break;
       case 'profile':   renderProfile(); break;
       case 'favorites': renderFavorites(); break;
       case 'location':  renderLocationMap(); break;
@@ -1248,9 +1252,34 @@ var App = (() => {
     } catch { toast('Failed to cancel.','error'); }
   }
 
-  async function viewProof(orderId) {
+  function _ensureProofModal() {
+    if (!document.getElementById('modal-proof-viewer')) {
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div class="modal-overlay" id="modal-proof-viewer" style="z-index:9999;">
+          <div class="modal" style="max-width:640px;width:95%;">
+            <div class="modal-header">
+              <div>
+                <h3>Proof of Payment</h3>
+                <div id="proof-viewer-meta" style="font-size:12px;color:var(--text3);margin-top:2px;"></div>
+              </div>
+              <button class="modal-close" onclick="App.closeProofModal()">✕</button>
+            </div>
+            <div class="modal-body" style="text-align:center;min-height:120px;" id="proof-viewer-body">
+              <div class="loader"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(el.firstElementChild);
+    }
+  }
+
+  async function viewProof(orderId, meta) {
+    _ensureProofModal();
     openModal('modal-proof-viewer');
-    document.getElementById('proof-viewer-body').innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    document.getElementById('proof-viewer-body').innerHTML = '<div class="loader" style="padding:30px;"><div class="spinner"></div></div>';
+    const metaEl = document.getElementById('proof-viewer-meta');
+    if (metaEl) metaEl.textContent = meta || ('Order: ' + orderId);
     try {
       const res = await call('getPaymentProof', state.token, orderId);
       if (!res.success) {
@@ -1261,13 +1290,94 @@ var App = (() => {
       const isPDF = res.mimeType === 'application/pdf';
       document.getElementById('proof-viewer-body').innerHTML = isPDF
         ? `<embed src="${src}" type="application/pdf" style="width:100%;height:500px;">`
-        : `<img src="${src}" alt="Proof of Payment" style="max-width:100%;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.15);">`;
+        : `<img src="${src}" alt="Proof of Payment" style="max-width:100%;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.15);">
+           <div style="margin-top:10px;"><a href="${src}" download="proof_${orderId}" class="btn btn-outline btn-sm">⬇ Download</a></div>`;
     } catch {
       document.getElementById('proof-viewer-body').innerHTML = '<p style="color:var(--danger);padding:20px;">Failed to load proof.</p>';
     }
   }
 
   function closeProofModal() { closeModal('modal-proof-viewer'); }
+
+  // ================================================================
+  // TRANSACTIONS (e-wallet payments + proof viewer)
+  // ================================================================
+
+  async function renderTransactions() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">💳 Transactions</h2>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">E-wallet payments (GCash / Maya) with proof of payment</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;" id="txn-filters">
+          <button class="btn btn-primary btn-sm" onclick="App._txnFilter('all',this)">All</button>
+          <button class="btn btn-outline btn-sm" onclick="App._txnFilter('awaiting_confirmation',this)">Awaiting</button>
+          <button class="btn btn-outline btn-sm" onclick="App._txnFilter('paid',this)">Paid ✓</button>
+          <button class="btn btn-outline btn-sm" onclick="App._txnFilter('rejected',this)">Rejected</button>
+        </div>
+        <div id="txn-list"><div class="loader"><div class="spinner"></div></div></div>
+      </div>`;
+    _ensureProofModal();
+    await _loadTransactions('all');
+  }
+
+  async function _loadTransactions(filter) {
+    const el = document.getElementById('txn-list');
+    if (!el) return;
+    try {
+      const res = await call('getStallOrders', state.token, {});
+      const all = (res.orders || []).filter(o => o.PaymentMethod !== 'cash_on_pickup');
+      const rows = filter === 'all' ? all : all.filter(o => o.PaymentStatus === filter);
+
+      if (!rows.length) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon">💳</div><p>No ${filter === 'all' ? 'e-wallet' : filter} transactions.</p></div>`;
+        return;
+      }
+
+      const statusLabel = { awaiting_confirmation:'Awaiting', paid:'Paid', rejected:'Rejected', pending:'Pending' };
+      const statusColor = { awaiting_confirmation:'#F9A825', paid:'#1B5E20', rejected:'#C62828', pending:'#888' };
+
+      el.innerHTML = `<div class="table-wrap"><table>
+        <tr>
+          <th>Date</th>
+          <th>${state.role === 'admin' ? 'Stall' : 'Customer'}</th>
+          <th>Customer</th>
+          <th>Method</th>
+          <th>Ref #</th>
+          <th>Amount</th>
+          <th>Payment</th>
+          <th>Proof</th>
+        </tr>
+        ${rows.map(o => `
+          <tr>
+            <td style="font-size:12px;white-space:nowrap;">${new Date(o.CreatedAt).toLocaleDateString('en-PH')}</td>
+            <td style="font-size:13px;">${state.role === 'admin' ? (o.StallName||'—') : (o.CustomerName||'—')}</td>
+            <td style="font-size:13px;">${o.CustomerName||'—'}</td>
+            <td style="font-size:12px;text-transform:uppercase;font-weight:700;">${o.PaymentMethod === 'gcash' ? '🟦 GCash' : '💙 Maya'}</td>
+            <td style="font-size:12px;font-family:monospace;">${o.PaymentRef || '—'}</td>
+            <td style="font-weight:700;">${peso(o.Total)}</td>
+            <td>
+              <span style="font-size:12px;font-weight:700;color:${statusColor[o.PaymentStatus]||'#888'};">
+                ${statusLabel[o.PaymentStatus]||o.PaymentStatus||'—'}
+              </span>
+            </td>
+            <td>
+              ${o.ProofURL
+                ? `<button class="btn btn-outline btn-sm" onclick="App.viewProof('${o.OrderID}','${o.CustomerName} · ${o.OrderID}')">🖼️ View</button>`
+                : `<span style="font-size:12px;color:var(--text3);">None</span>`}
+            </td>
+          </tr>`).join('')}
+      </table></div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;">${rows.length} transaction${rows.length!==1?'s':''}</p>`;
+    } catch { el.innerHTML = '<div class="alert alert-danger">Failed to load transactions.</div>'; }
+  }
+
+  function _txnFilter(filter, btn) {
+    document.querySelectorAll('#txn-filters .btn').forEach(b => { b.className = 'btn btn-outline btn-sm'; });
+    btn.className = 'btn btn-primary btn-sm';
+    _loadTransactions(filter);
+  }
 
   // ================================================================
   // CONCESSIONAIRE DASHBOARD
@@ -2561,7 +2671,7 @@ var App = (() => {
     navigateTo, doSearch, filterByCategory,
     addToCart, changeQty, removeCartItem, removeStallFromCart, placeOrder,
     _toggleRef, _checkOrderReady, _proofSelected, _clearProof,
-    cancelOrder, viewProof, closeProofModal, openRatingModal, selectStar, submitRating,
+    cancelOrder, viewProof, closeProofModal, renderTransactions, _txnFilter, openRatingModal, selectStar, submitRating,
     updateStatus, verifyPayment, openRejectPaymentModal, submitRejectPayment, filterStallOrders, renderStallOrders,
     toggleStallOnline, openHoursModal,
     toggleFavorite, renderFavorites, renderMyOrders, renderLocationMap,
