@@ -1409,9 +1409,25 @@ var App = (() => {
       let orders = all;
       if (tab === 'active')  orders = all.filter(o => activeStatuses.includes(o.Status));
       if (tab === 'history') orders = all.filter(o => historyStatuses.includes(o.Status));
-      list.innerHTML = orders.length
-        ? orders.map(o => concOrderCard(o)).join('')
-        : `<div class="empty-state"><div class="empty-icon">${tab==='history'?'🗂️':'📭'}</div><p>${tab==='history'?'No order history yet.':'No active orders.'}</p></div>`;
+      if (!orders.length) {
+        list.innerHTML = `<div class="empty-state"><div class="empty-icon">${tab==='history'?'🗂️':'📭'}</div><p>${tab==='history'?'No order history yet.':'No active orders.'}</p></div>`;
+      } else {
+        // Group by customer
+        const byCustomer = [];
+        const seen = {};
+        for (const o of orders) {
+          const key = o.CustomerEmail || o.CustomerName;
+          if (!seen[key]) { seen[key] = []; byCustomer.push({ name: o.CustomerName, email: o.CustomerEmail, orders: seen[key] }); }
+          seen[key].push(o);
+        }
+        list.innerHTML = byCustomer.map((g, gi) => `
+          ${gi > 0 ? `<div style="height:1px;background:var(--border);margin:14px 0;"></div>` : ''}
+          <div style="font-size:12px;font-weight:700;color:var(--g700);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px;">
+            👤 ${g.name}
+          </div>
+          ${g.orders.map(o => concOrderCard(o)).join('')}
+        `).join('');
+      }
     } catch { toast('Failed to load orders.','error'); }
   }
 
