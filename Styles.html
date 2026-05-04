@@ -961,4 +961,166 @@ select.form-control {
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* =========================================================
+   USER DROPDOWN
+   ========================================================= */
+.user-dropdown-wrap { position: relative; }
+.user-dropdown-trigger {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  color: #fff; padding: 6px 12px; border-radius: 20px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: var(--font); transition: background .15s;
+  white-space: nowrap;
+}
+.user-dropdown-trigger:hover { background: rgba(255,255,255,.22); }
+.user-dropdown-menu {
+  display: none; position: absolute; right: 0; top: calc(100% + 8px);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
+  min-width: 210px; z-index: 500; overflow: hidden;
+}
+.user-dropdown-menu.open { display: block; }
+.user-dropdown-menu button {
+  display: block; width: 100%; text-align: left;
+  padding: 12px 16px; background: none; border: none;
+  font-family: var(--font); font-size: 14px; color: var(--text);
+  cursor: pointer; transition: background .1s; border-bottom: 1px solid var(--border);
+}
+.user-dropdown-menu button:last-child { border-bottom: none; }
+.user-dropdown-menu button:hover { background: var(--surface2); }
+.user-dropdown-menu .menu-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+.user-dropdown-menu .danger-item { color: var(--danger) !important; }
+
+/* =========================================================
+   FAVORITES / iHEART
+   ========================================================= */
+.heart-btn {
+  position: absolute; top: 8px; left: 8px; z-index: 3;
+  background: rgba(255,255,255,.85); border: none; border-radius: 50%;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; cursor: pointer; transition: transform .15s, background .15s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
+.heart-btn:hover { transform: scale(1.15); background: #fff; }
+.heart-btn.loved { color: #e53935; }
+
+/* =========================================================
+   BADGES
+   ========================================================= */
+.is-badge {
+  background: #1565c0; color: #fff; font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 10px; letter-spacing: .3px;
+}
+.offline-indicator {
+  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px;
+}
+.verified-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7;
+  font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 8px;
+}
+.awaiting-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--warn-bg); color: var(--warn); border: 1px solid #ffcc80;
+  font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 8px;
+}
+
+/* =========================================================
+   ONLINE / OFFLINE TOGGLE
+   ========================================================= */
+.stall-status-toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 700;
+  border: 2px solid; cursor: pointer; transition: all .2s; font-family: var(--font);
+}
+.stall-status-toggle.online  { background: #e8f5e9; color: #2e7d32; border-color: #2e7d32; }
+.stall-status-toggle.offline { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+
+/* =========================================================
+   PROOF OF PAYMENT UPLOAD
+   ========================================================= */
+.proof-upload-area {
+  border: 1.5px dashed var(--border); border-radius: 8px; padding: 12px 16px;
+  text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  background: var(--surface2); font-size: 13px; color: var(--text2);
+}
+.proof-upload-area:hover { border-color: var(--g700); background: var(--g50); color: var(--g800); }
+.proof-file-name { font-size: 12px; color: var(--g800); font-weight: 600; margin-top: 6px; }
+
+/* =========================================================
+   STALL CARD (position:relative for heart btn)
+   ========================================================= */
+.stall-card { position: relative; }
+.stall-card.is-offline .stall-banner::after {
+  content: 'Offline'; position: absolute; inset: 0;
+  background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 18px; font-weight: 800; letter-spacing: 1px;
+}
+.stall-card.is-offline .stall-open-badge { background: var(--danger) !important; }
+
+/* =========================================================
+   CART DELETE BUTTON
+   ========================================================= */
+.cart-item-remove {
+  background: none; border: none; color: var(--danger); cursor: pointer;
+  font-size: 16px; padding: 4px 6px; border-radius: 6px; transition: background .1s;
+}
+.cart-item-remove:hover { background: var(--danger-bg); }
+.cart-stall-header {
+  display: flex; align-items: center; gap: 8px; padding: 14px 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+.cart-stall-header h2 { flex: 1; font-size: 15px; font-weight: 700; }
+
+/* =========================================================
+   ORDER TABS
+   ========================================================= */
+.order-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+.order-tab {
+  padding: 10px 18px; font-size: 14px; font-weight: 600; color: var(--text3);
+  background: none; border: none; border-bottom: 2px solid transparent;
+  cursor: pointer; margin-bottom: -2px; font-family: var(--font); transition: color .15s;
+}
+.order-tab.active { color: var(--g800); border-bottom-color: var(--g800); }
+
+/* =========================================================
+   LOCATION MAP
+   ========================================================= */
+.location-card {
+  background: var(--g50); border: 1px solid var(--g100); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 12px;
+}
+.location-card h4 { font-size: 14px; font-weight: 700; color: var(--g900); margin-bottom: 4px; }
+.location-card p  { font-size: 13px; color: var(--text2); line-height: 1.5; }
+
+/* =========================================================
+   TERMS MODAL
+   ========================================================= */
+.terms-body { font-size: 13px; color: var(--text2); line-height: 1.8; max-height: 55vh; overflow-y: auto; }
+.terms-body h4 { font-size: 14px; font-weight: 700; color: var(--text); margin: 16px 0 4px; }
+
+/* =========================================================
+   PARKED ORDER CHECKBOX
+   ========================================================= */
+.stall-include-toggle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text2); cursor: pointer; user-select: none;
+}
+.stall-include-toggle input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--g800); }
+
+/* =========================================================
+   RESPONSIVE IMPROVEMENTS
+   ========================================================= */
+@media (max-width: 480px) {
+  .topnav { padding: 0 12px; gap: 8px; }
+  .topnav .brand-text { display: none; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .form-row { flex-direction: column; }
+  .modal { max-height: 95vh; border-radius: var(--radius) var(--radius) 0 0; }
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .user-dropdown-trigger span.uname { display: none; }
+}
 </style>

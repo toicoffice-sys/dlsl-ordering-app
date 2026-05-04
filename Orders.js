@@ -26,6 +26,7 @@ function placeOrder(token, orderData) {
   const concessionaires = getConcessionaires(true);
   const stall = concessionaires.find(c => c.StallID === stallId);
   if (!stall) return { success: false, error: 'Stall not found or not accepting orders.' };
+  if (stall.Status === 'offline') return { success: false, error: `${stall.StallName} is currently offline and not accepting orders.` };
 
   // Validate items and stock
   const productSheet  = getSheet(SHEETS.PRODUCTS);

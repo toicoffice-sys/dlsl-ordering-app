@@ -331,9 +331,34 @@ function getConcessionaires(activeOnly = true) {
   const hit = cacheGet(key);
   if (hit) return hit;
   const rows   = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
-  const result = activeOnly ? rows.filter(r => r.Status === 'active' && r.ApprovalStatus === APPROVAL.APPROVED) : rows;
+  // Include 'offline' stalls so they appear in the list (but can't accept orders)
+  const result = activeOnly
+    ? rows.filter(r => (r.Status === 'active' || r.Status === 'offline') && r.ApprovalStatus === APPROVAL.APPROVED)
+    : rows;
   cachePut(key, result);
   return result;
+}
+
+function toggleStallOnline(token, isOnline) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+  if (session.role !== ROLES.CONCESSIONAIRE) return { success: false, error: 'Unauthorized.' };
+
+  const stall = getStallByEmail(session.email);
+  if (!stall) return { success: false, error: 'Stall not found.' };
+
+  const newStatus = isOnline ? 'active' : 'offline';
+  const sheet   = getSheet(SHEETS.CONCESSIONAIRES);
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] !== stall.StallID) continue;
+    sheet.getRange(i + 1, headers.indexOf('Status') + 1).setValue(newStatus);
+    cacheBust('conc_true', 'conc_false');
+    return { success: true, isOnline };
+  }
+  return { success: false, error: 'Stall not found.' };
 }
 
 function getAnnouncements() {

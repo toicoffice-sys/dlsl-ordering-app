@@ -76,7 +76,10 @@
             Generate OTP &#8594;
           </button>
           <p class="lf-footer">Don't have an account?
-            <strong style="color:#2E7D32;">Contact RESGO</strong> to register.</p>
+            <strong style="color:#2E7D32;">Contact RESGO</strong> to register.<br>
+            <span style="font-size:12px;">By signing in you agree to our
+              <a href="#" onclick="event.preventDefault();document.getElementById('modal-terms').classList.add('open')" style="color:var(--g700);text-decoration:underline;">Terms &amp; Agreement</a>.</span>
+          </p>
         </div>
 
         <!-- Step 2: OTP (hidden until email is submitted) -->
@@ -125,12 +128,24 @@
       </div>
       <div class="topnav-spacer"></div>
       <div class="topnav-items" id="top-nav-items"></div>
-      <span class="topnav-username" id="topnav-username"></span>
       <button class="cart-pill" id="topnav-cart" onclick="App.navigateTo('cart')">
         🛒 Cart
         <span class="cart-count" id="cart-badge" style="display:none;">0</span>
       </button>
-      <button class="topnav-btn" onclick="App.doLogout()">Sign out</button>
+      <div class="user-dropdown-wrap" id="user-dropdown-wrap">
+        <button class="user-dropdown-trigger" onclick="App.toggleUserMenu()">
+          <span class="uname" id="topnav-username">Me</span> ▾
+        </button>
+        <div class="user-dropdown-menu" id="user-dropdown-menu">
+          <button id="menu-track-btn" onclick="App.closeUserMenu();App.navigateTo('orders')">📦 Track My Order</button>
+          <button onclick="App.closeUserMenu();App.navigateTo('favorites')">❤️ Favorites</button>
+          <button onclick="App.closeUserMenu();App.navigateTo('profile')">👤 Profile</button>
+          <hr class="menu-divider">
+          <button onclick="App.closeUserMenu();App.showTerms()">📄 Terms &amp; Agreement</button>
+          <hr class="menu-divider">
+          <button class="danger-item" onclick="App.closeUserMenu();App.doLogout()">Sign Out</button>
+        </div>
+      </div>
     </nav>
     <main id="main-content" style="flex:1;overflow-y:auto;"></main>
     <nav class="bottom-nav" id="bottom-nav" style="display:none;">
@@ -139,6 +154,41 @@
   </div>
 
   <div id="toast-container"></div>
+
+  <!-- Terms & Agreement Modal -->
+  <div class="modal-overlay" id="modal-terms">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>📄 Terms &amp; Agreement</h3>
+        <button class="modal-close" onclick="document.getElementById('modal-terms').classList.remove('open')">✕</button>
+      </div>
+      <div class="modal-body terms-body">
+        <h4>1. Acceptance of Terms</h4>
+        <p>By accessing and using GreenBite, you agree to be bound by these Terms and Agreement. This platform is operated by RESGO — De La Salle Lipa.</p>
+        <h4>2. Eligibility</h4>
+        <p>Use of this platform is restricted to registered students, parents, faculty, staff, and authorized partners of De La Salle Lipa. Accounts are non-transferable.</p>
+        <h4>3. Orders &amp; Payments</h4>
+        <p>All orders placed are binding. Cancellations are only permitted while the order is in Pending or Confirmed status. Payment references submitted must be accurate and valid. Fraudulent payment submissions may result in account suspension.</p>
+        <h4>4. Concessionaire Responsibilities</h4>
+        <p>Concessionaires are responsible for the accuracy of menu items, pricing, and stock levels. Menus are subject to RESGO review and approval before being visible to customers.</p>
+        <h4>5. Privacy</h4>
+        <p>Your email and order data are used solely for order processing and notification purposes within the De La Salle Lipa campus ordering system. Data is not shared with third parties.</p>
+        <h4>6. Prohibited Use</h4>
+        <p>Users must not attempt to manipulate orders, circumvent payment verification, or misuse the platform in any manner that disrupts service for other users.</p>
+        <h4>7. Changes to Terms</h4>
+        <p>RESGO reserves the right to update these Terms at any time. Continued use of the platform constitutes acceptance of updated terms.</p>
+        <p style="margin-top:16px;font-size:12px;color:var(--text3);">Last updated: May 2026 · GreenBite — De La Salle Lipa RESGO</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="document.getElementById('modal-terms').classList.remove('open')">I Understand</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- A2OM Footer -->
+  <footer style="background:#1A3A5C;color:#fff;text-align:center;padding:12px;font-size:12px;display:none;" id="app-footer">
+    <a href="https://toic.dlsl.edu.ph/services" target="_blank" style="color:#C8A951;text-decoration:none;font-weight:600;">A2OM Automation · De La Salle Lipa — TOIC</a>
+  </footer>
 </div>
 
 <script>

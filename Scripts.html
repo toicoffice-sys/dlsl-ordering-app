@@ -9,6 +9,7 @@ var App = (() => {
   let state = {
     token: null, user: null, role: null, stallData: null,
     cart: [],
+    favorites: [],
     view: 'login', subview: null,
     concessionaires: [], products: [], orders: [],
     currentStall: null, selectedOrder: null,
@@ -19,6 +20,14 @@ var App = (() => {
   function loadToken()  { return localStorage.getItem('dlsl_ordering_token'); }
   function saveToken(t) { localStorage.setItem('dlsl_ordering_token', t); }
   function clearToken() { localStorage.removeItem('dlsl_ordering_token'); }
+
+  // ---- Persist cart ----
+  function saveCart()  { try { localStorage.setItem('dlsl_cart', JSON.stringify(state.cart)); } catch(e) {} }
+  function loadCart()  { try { const c = localStorage.getItem('dlsl_cart'); return c ? JSON.parse(c) : []; } catch(e) { return []; } }
+
+  // ---- Persist favorites ----
+  function saveFavorites()  { try { localStorage.setItem('dlsl_favorites', JSON.stringify(state.favorites)); } catch(e) {} }
+  function loadFavorites()  { try { const f = localStorage.getItem('dlsl_favorites'); return f ? JSON.parse(f) : []; } catch(e) { return []; } }
 
   // ---- GAS caller ----
   function call(fn, ...args) {
@@ -117,12 +126,23 @@ var App = (() => {
     state.role = res.role;
     state.stallData = res.stallData;
     state.concessionaires = res.concessionaires || [];
-    document.getElementById('topnav-username').textContent = res.user.name;
+    state.cart      = loadCart();
+    state.favorites = loadFavorites();
+    const nameEl = document.getElementById('topnav-username');
+    if (nameEl) nameEl.textContent = (res.user.name || '').split(' ')[0];
     document.getElementById('main-nav').style.display = 'flex';
     document.getElementById('bottom-nav').style.display = 'block';
-    if (res.role === 'admin' || res.role === 'concessionaire') {
+    document.getElementById('app-footer').style.display = 'block';
+    const isCustomer = !['admin','concessionaire'].includes(res.role);
+    if (!isCustomer) {
       document.getElementById('topnav-cart').style.display = 'none';
     }
+    // Hide Track My Order from menu for admin/concessionaire
+    const trackBtn = document.getElementById('menu-track-btn');
+    if (trackBtn) trackBtn.style.display = isCustomer ? '' : 'none';
+    const favBtn = document.querySelector('#user-dropdown-menu button[onclick*="favorites"]');
+    if (favBtn) favBtn.style.display = isCustomer ? '' : 'none';
+    updateCartBadge();
     setupNavForRole(res.role);
     navigateTo('home');
   }
@@ -233,13 +253,34 @@ var App = (() => {
 
   async function doLogout() {
     if (state.token) await call('logout', state.token).catch(()=>{});
-    state = { token:null, user:null, role:null, stallData:null, cart:[], view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null, pendingEmail:null, pendingName:null };
+    localStorage.removeItem('dlsl_cart');
+    state = { token:null, user:null, role:null, stallData:null, cart:[], favorites:[], view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null, pendingEmail:null, pendingName:null };
     clearToken();
     document.getElementById('main-nav').style.display = 'none';
     document.getElementById('bottom-nav').style.display = 'none';
+    document.getElementById('app-footer').style.display = 'none';
     document.getElementById('topnav-cart').style.display = '';
+    closeUserMenu();
     showPage('login');
     renderLoginStep1();
+  }
+
+  // ---- User dropdown ----
+  function toggleUserMenu() {
+    document.getElementById('user-dropdown-menu').classList.toggle('open');
+  }
+  function closeUserMenu() {
+    const m = document.getElementById('user-dropdown-menu');
+    if (m) m.classList.remove('open');
+  }
+  document.addEventListener('click', function(e) {
+    const wrap = document.getElementById('user-dropdown-wrap');
+    if (wrap && !wrap.contains(e.target)) closeUserMenu();
+  });
+
+  // ---- Terms ----
+  function showTerms() {
+    document.getElementById('modal-terms').classList.add('open');
   }
 
   // ================================================================
@@ -252,9 +293,10 @@ var App = (() => {
     if (!tabs || !navItems) return;
 
     const customerTabs = [
-      { id:'home',    icon:'🏠', label:'Home' },
-      { id:'orders',  icon:'📦', label:'Orders' },
-      { id:'profile', icon:'👤', label:'Profile' }
+      { id:'home',      icon:'🏠', label:'Home' },
+      { id:'favorites', icon:'❤️', label:'Favorites' },
+      { id:'orders',    icon:'📦', label:'Orders' },
+      { id:'profile',   icon:'👤', label:'Profile' }
     ];
     const concTabs = [
       { id:'home',     icon:'📊', label:'Dashboard' },
@@ -298,11 +340,13 @@ var App = (() => {
         else renderMyOrders();
         break;
       case 'order-detail': renderOrderDetail(params?.orderId); break;
-      case 'products': renderConcProducts(); break;
-      case 'users':    renderAdminUsers(); break;
-      case 'stalls':   renderAdminStalls(); break;
-      case 'reports':  renderAdminReports(); break;
-      case 'profile':  renderProfile(); break;
+      case 'products':  renderConcProducts(); break;
+      case 'users':     renderAdminUsers(); break;
+      case 'stalls':    renderAdminStalls(); break;
+      case 'reports':   renderAdminReports(); break;
+      case 'profile':   renderProfile(); break;
+      case 'favorites': renderFavorites(); break;
+      case 'location':  renderLocationMap(); break;
     }
   }
 
@@ -329,14 +373,20 @@ var App = (() => {
             <button onclick="App.doSearch()">Search</button>
           </div>
           <div class="hero-stats">
-            <div class="hero-stat">🏪 <strong>${state.concessionaires.length}</strong> stalls open</div>
-            <div class="hero-stat">🍽️ <strong>57+</strong> menu items</div>
-            <div class="hero-stat">⚡ <strong>Order & Pickup</strong></div>
+            <div class="hero-stat">🏪 <strong>${state.concessionaires.filter(s=>s.Status==='active').length}</strong> stalls open</div>
+            <div class="hero-stat">🍽️ <strong>Menu</strong> ordering</div>
+            <div class="hero-stat" style="cursor:pointer;" onclick="App.navigateTo('location')">📍 <strong>Campus Map</strong></div>
           </div>
         </div>
       </div>
 
       <div id="home-body">
+        ${state.favorites.length ? `
+        <div class="section-header">
+          <div class="section-title">❤️ Your Favorites</div>
+          <div class="section-link" onclick="App.navigateTo('favorites')">View all</div>
+        </div>
+        <div class="stall-grid" style="margin-bottom:20px;">${renderStallCards(state.concessionaires.filter(s=>state.favorites.includes(s.StallID)))}</div>` : ''}
         <div class="section-header">
           <div class="section-title">Campus Stalls</div>
           <div class="section-link" onclick="App.doSearch('')">View all</div>
@@ -349,41 +399,147 @@ var App = (() => {
 
   function renderStallCards(stalls) {
     if (!stalls.length) return `<div class="empty-state"><div class="empty-icon">🏪</div><p>No stalls available yet.</p></div>`;
-    return stalls.map(s => `
-      <div class="stall-card" onclick="App.navigateTo('stall',{stallId:'${s.StallID}'})">
+    return stalls.map(s => {
+      const isOffline  = s.Status === 'offline';
+      const isFav      = state.favorites.includes(s.StallID);
+      const isExclusive = (s.Description || '').includes('[IS]') || (s.Tags || '').includes('IS');
+      return `
+      <div class="stall-card${isOffline ? ' is-offline' : ''}" onclick="App.navigateTo('stall',{stallId:'${s.StallID}'})">
+        <button class="heart-btn${isFav?' loved':''}" onclick="event.stopPropagation();App.toggleFavorite('${s.StallID}')" title="${isFav?'Remove from favorites':'Add to favorites'}">${isFav?'❤️':'🤍'}</button>
         <div class="stall-banner">
           ${s.LogoURL
             ? `<img src="${s.LogoURL}" alt="${s.StallName}" onerror="this.parentElement.innerHTML='<div class=stall-banner-placeholder>🏪</div>'">`
             : `<div class="stall-banner-placeholder">🍽️</div>`}
-          <div class="stall-open-badge">Open</div>
+          <div class="stall-open-badge" style="${isOffline?'background:var(--danger);':''}">${isOffline ? 'Offline' : 'Open'}</div>
           ${s.Rating ? `<div class="stall-rating-badge">⭐ ${Number(s.Rating).toFixed(1)}</div>` : ''}
         </div>
         <div class="stall-info">
-          <div class="stall-name">${s.StallName}</div>
+          <div class="stall-name" style="display:flex;align-items:center;gap:6px;">
+            ${s.StallName}
+            ${isExclusive ? `<span class="is-badge">IS Only</span>` : ''}
+          </div>
           <div class="stall-meta">
             <span>📍 ${s.Location || 'Campus'}</span>
             <span class="dot"></span>
             <span>🕐 ${s.OperatingHours || 'See stall'}</span>
           </div>
-          ${s.Description ? `<div class="stall-tags"><span class="stall-tag">${s.Description.split(' ').slice(0,4).join(' ')}...</span></div>` : ''}
+          ${s.Description && !s.Description.includes('[IS]') ? `<div class="stall-tags"><span class="stall-tag">${s.Description.split(' ').slice(0,4).join(' ')}...</span></div>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
-  async function doSearch() {
-    const q = document.getElementById('search-input')?.value.trim();
+  function toggleFavorite(stallId) {
+    const idx = state.favorites.indexOf(stallId);
+    if (idx >= 0) { state.favorites.splice(idx, 1); toast('Removed from favorites.'); }
+    else { state.favorites.push(stallId); toast('❤️ Added to favorites!'); }
+    saveFavorites();
+    // Re-render heart buttons without full page reload
+    document.querySelectorAll('.heart-btn').forEach(btn => {
+      const id = btn.closest('.stall-card')?.querySelector('[onclick*="navigateTo(\'stall\'"]')?.getAttribute('onclick')?.match(/stallId:'([^']+)'/)?.[1]
+             || btn.getAttribute('onclick')?.match(/'([^']+)'\)/)?.[1];
+      if (!id) return;
+      const fav = state.favorites.includes(id);
+      btn.textContent = fav ? '❤️' : '🤍';
+      btn.classList.toggle('loved', fav);
+      btn.title = fav ? 'Remove from favorites' : 'Add to favorites';
+    });
+  }
+
+  async function doSearch(overrideQ) {
+    const q = overrideQ !== undefined ? overrideQ : (document.getElementById('search-input')?.value.trim() || '');
     if (!q) { renderCustomerHome(); return; }
 
-    const body = document.getElementById('home-body');
+    const body = document.getElementById('home-body') || document.getElementById('main-content');
     if (body) body.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+    // Client-side stall search
+    const stallMatches = state.concessionaires.filter(s =>
+      [s.StallName, s.Description, s.Location, s.Tags || '']
+        .some(f => (f||'').toLowerCase().includes(q.toLowerCase()))
+    );
 
     try {
       const results = await call('searchProducts', q);
-      if (body) body.innerHTML = results.length
-        ? `<div style="padding:12px 20px;font-size:13px;color:var(--text2);">${results.length} result(s) for "<strong>${q}</strong>"</div>
-           <div class="product-grid">${results.map(productCardHTML).join('')}</div>`
-        : `<p style="padding:30px 20px;color:var(--text3);text-align:center;">No results for "<strong>${q}</strong>"</p>`;
+
+      // Merge: stalls + products, deduplicated
+      const stallSection = stallMatches.length ? `
+        <div style="padding:12px 20px 4px;font-size:13px;color:var(--text2);font-weight:600;">🏪 Stalls matching "${q}"</div>
+        <div class="stall-grid" style="padding:0 16px 16px;">${renderStallCards(stallMatches)}</div>` : '';
+
+      const productSection = results.length ? `
+        <div style="padding:12px 20px 4px;font-size:13px;color:var(--text2);font-weight:600;">🍽️ Menu items matching "${q}"</div>
+        <div class="product-grid">${results.map(productCardHTML).join('')}</div>` : '';
+
+      if (body) {
+        if (!stallMatches.length && !results.length) {
+          body.innerHTML = `<p style="padding:30px 20px;color:var(--text3);text-align:center;">No results for "<strong>${q}</strong>"</p>`;
+        } else {
+          body.innerHTML = `<div style="padding:12px 20px;font-size:13px;color:var(--text2);">${stallMatches.length + results.length} result(s) for "<strong>${q}</strong>"</div>${stallSection}${productSection}`;
+        }
+      }
     } catch { toast('Search failed.','error'); }
+  }
+
+  // ================================================================
+  // FAVORITES
+  // ================================================================
+
+  function renderFavorites() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    const favStalls = state.concessionaires.filter(s => state.favorites.includes(s.StallID));
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">❤️ Favorite Stalls</h2>
+        ${favStalls.length
+          ? `<div class="stall-grid">${renderStallCards(favStalls)}</div>`
+          : `<div class="empty-state"><div class="empty-icon">🤍</div><p>No favorites yet.<br>Tap the ❤️ on any stall to save it here.</p></div>`}
+      </div>`;
+  }
+
+  // ================================================================
+  // LOCATION MAP
+  // ================================================================
+
+  function renderLocationMap() {
+    showPage('main');
+    document.getElementById('main-content').innerHTML = `
+      <div style="padding:20px;">
+        <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('home')" style="margin-bottom:16px;">← Back</button>
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">📍 Campus Stall Locations</h2>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Find your favorite stall on campus.</p>
+
+        <div class="location-card">
+          <h4>🏢 Bro. Bloemen Hall (BB)</h4>
+          <p>Ground floor canteen area. Stalls offering rice meals, snacks, and beverages. Available during school days 7:00 AM – 5:00 PM.</p>
+        </div>
+        <div class="location-card">
+          <h4>🍽️ Mr. Cruz Area</h4>
+          <p>Near the main building entrance. Known for affordable merienda and special Filipino meals. Open Mon–Fri 6:30 AM – 4:30 PM.</p>
+        </div>
+        <div class="location-card">
+          <h4>🎓 Student Center</h4>
+          <p>Multi-stall area at the Student Center. Variety of food, drinks, and merchandise. Open during class hours and events.</p>
+          ${state.concessionaires.filter(s=>(s.Description||'').includes('[IS]')).length
+            ? `<p style="margin-top:8px;"><span class="is-badge">IS Only</span> <span style="font-size:12px;color:var(--text2);margin-left:4px;">Some stalls in this area are exclusive to IS students.</span></p>` : ''}
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><h2>All Stalls</h2></div>
+          <div class="card-body" style="padding:0;">
+            ${state.concessionaires.map(s => `
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="App.navigateTo('stall',{stallId:'${s.StallID}'})">
+                <div style="font-size:28px;">${s.LogoURL ? `<img src="${s.LogoURL}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;">` : '🏪'}</div>
+                <div style="flex:1;">
+                  <div style="font-weight:700;font-size:14px;">${s.StallName} ${(s.Description||'').includes('[IS]')?'<span class="is-badge">IS</span>':''}</div>
+                  <div style="font-size:12px;color:var(--text3);">📍 ${s.Location||'Campus'}</div>
+                </div>
+                <span class="${s.Status==='offline'?'offline-indicator':'badge badge-approved'}">${s.Status==='offline'?'Offline':'Open'}</span>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
   }
 
   // ================================================================
@@ -495,11 +651,12 @@ var App = (() => {
   // ================================================================
 
   function addToCart(product) {
+    if (product.Status === 'offline') { toast(`${product.StallName} is currently offline.`, 'error'); return; }
     const existing = state.cart.find(i => i.ProductID === product.ProductID);
     if (existing) existing.qty++;
     else state.cart.push({ ...product, qty: 1 });
-
     updateCartBadge();
+    saveCart();
     toast(`${product.Name} added to cart`, 'success');
   }
 
@@ -532,23 +689,34 @@ var App = (() => {
 
     const stallCards = stallGroups.map(g => `
       <div class="card" id="cart-stall-${g.stallId}" style="margin-bottom:16px;">
-        <div class="card-header"><h2>🏪 ${g.stallName}</h2></div>
+        <div class="cart-stall-header">
+          <h2>🏪 ${g.stallName}</h2>
+          <button class="btn btn-danger btn-sm" onclick="App.removeStallFromCart('${g.stallId}')" title="Remove stall from cart">🗑 Remove</button>
+        </div>
         <div class="card-body" id="cart-items-${g.stallId}">${renderStallItems(g.items)}</div>
         <div style="padding:12px 16px;border-top:1px solid var(--border);">
-          <div style="text-align:right;font-size:13px;color:var(--text2);margin-bottom:12px;">
+          <div class="stall-subtotal" style="text-align:right;font-size:13px;color:var(--text2);margin-bottom:12px;">
             Subtotal: <strong>${peso(g.items.reduce((s,i)=>s+i.Price*i.qty,0))}</strong>
           </div>
           <div class="form-group" style="margin-bottom:10px;">
             <label class="form-label" style="font-size:13px;">Payment Method</label>
-            <select class="form-control" id="payment-method-${g.stallId}" onchange="App._toggleRef('${g.stallId}',this.value)">
+            <select class="form-control" id="payment-method-${g.stallId}" onchange="App._toggleRef('${g.stallId}',this.value);App._checkOrderReady()">
               <option value="cash_on_pickup">Cash on Pickup</option>
               <option value="gcash">GCash</option>
               <option value="maya">Maya</option>
             </select>
           </div>
-          <div id="payment-ref-group-${g.stallId}" style="display:none;" class="form-group" style="margin-bottom:0;">
-            <label class="form-label" style="font-size:13px;">Reference Number</label>
-            <input class="form-control" id="payment-ref-${g.stallId}" placeholder="Enter GCash/Maya reference number">
+          <div id="payment-ref-group-${g.stallId}" style="display:none;" class="form-group">
+            <label class="form-label" style="font-size:13px;">Reference Number *</label>
+            <input class="form-control" id="payment-ref-${g.stallId}" placeholder="Enter GCash/Maya reference number" oninput="App._checkOrderReady()">
+          </div>
+          <div id="payment-proof-group-${g.stallId}" style="display:none;" class="form-group">
+            <label class="form-label" style="font-size:13px;">Proof of Payment</label>
+            <label class="proof-upload-area" for="payment-proof-file-${g.stallId}">
+              📎 Tap to upload screenshot
+              <input type="file" accept="image/*" id="payment-proof-file-${g.stallId}" style="display:none;" onchange="App._proofSelected('${g.stallId}',this)">
+            </label>
+            <div class="proof-file-name" id="proof-name-${g.stallId}"></div>
           </div>
         </div>
       </div>`).join('');
@@ -572,9 +740,10 @@ var App = (() => {
         <div class="card" id="cart-totals-card">
           <div class="card-body">
             ${renderTotalsBody(stallGroups, total)}
-            <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()">
+            <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()" disabled>
               Place ${count > 1 ? count + ' Orders' : 'Order'}
             </button>
+            <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px;" id="order-btn-hint">Fill in payment details above to enable order.</p>
           </div>
         </div>
       </div>`;
@@ -612,10 +781,14 @@ var App = (() => {
     const groups = getCartGroups();
     const total  = state.cart.reduce((s,i) => s + (i.Price * i.qty), 0);
     const body   = card.querySelector('.card-body');
-    if (body) body.innerHTML = renderTotalsBody(groups, total) + `
-      <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()">
-        Place ${groups.length > 1 ? groups.length + ' Orders' : 'Order'}
-      </button>`;
+    if (body) {
+      body.innerHTML = renderTotalsBody(groups, total) + `
+        <button class="btn btn-gold btn-block" style="margin-top:16px;" id="place-order-btn" onclick="App.placeOrder()" disabled>
+          Place ${groups.length > 1 ? groups.length + ' Orders' : 'Order'}
+        </button>
+        <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px;" id="order-btn-hint">Fill in payment details above to enable order.</p>`;
+      _checkOrderReady();
+    }
   }
 
   function maxQty(item) {
@@ -639,7 +812,7 @@ var App = (() => {
           <div class="cart-item-price">${peso(item.Price)} each &nbsp;·&nbsp; <span style="color:var(--text3);font-size:12px;">${stockLabel}</span></div>
         </div>
         <div class="qty-control">
-          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',-1)" ${atMin ? '' : ''}>−</button>
+          <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',-1)">−</button>
           <span class="qty-display">${item.qty}</span>
           <button class="qty-btn" onclick="App.changeQty('${item.ProductID}',1)"
             ${atMax ? 'disabled style="opacity:.35;cursor:not-allowed;"' : ''}
@@ -649,6 +822,7 @@ var App = (() => {
           <div style="font-weight:600;">${peso(item.Price * item.qty)}</div>
           ${atMax ? `<div style="font-size:11px;color:var(--warn);">Max ${max}</div>` : ''}
         </div>
+        <button class="cart-item-remove" onclick="App.removeCartItem('${item.ProductID}')" title="Remove item">✕</button>
       </div>`;
     }).join('');
   }
@@ -671,6 +845,7 @@ var App = (() => {
     }
 
     updateCartBadge();
+    saveCart();
     const stallItems = state.cart.filter(i => i.StallID === stallId);
     if (!stallItems.length) {
       const section = document.getElementById('cart-stall-' + stallId);
@@ -679,16 +854,56 @@ var App = (() => {
     } else {
       const el = document.getElementById('cart-items-' + stallId);
       if (el) el.innerHTML = renderStallItems(stallItems);
-      // update per-stall subtotal
-      const subtotalEl = el && el.parentElement && el.parentElement.querySelector('div[style*="text-align:right"]');
+      const subtotalEl = el?.parentElement?.querySelector('.stall-subtotal');
       if (subtotalEl) subtotalEl.innerHTML = `Subtotal: <strong>${peso(stallItems.reduce((s,i)=>s+i.Price*i.qty,0))}</strong>`;
     }
     updateCartTotalsDisplay();
   }
 
+  function removeCartItem(productId) {
+    state.cart = state.cart.filter(i => i.ProductID !== productId);
+    updateCartBadge();
+    saveCart();
+    renderCart();
+  }
+
+  function removeStallFromCart(stallId) {
+    state.cart = state.cart.filter(i => i.StallID !== stallId);
+    updateCartBadge();
+    saveCart();
+    renderCart();
+  }
+
   function _toggleRef(stallId, method) {
-    const refGroup = document.getElementById('payment-ref-group-' + stallId);
-    if (refGroup) refGroup.style.display = method !== 'cash_on_pickup' ? 'block' : 'none';
+    const refGroup   = document.getElementById('payment-ref-group-' + stallId);
+    const proofGroup = document.getElementById('payment-proof-group-' + stallId);
+    const needRef    = method !== 'cash_on_pickup';
+    if (refGroup)   refGroup.style.display   = needRef ? 'block' : 'none';
+    if (proofGroup) proofGroup.style.display  = needRef ? 'block' : 'none';
+    if (!needRef) {
+      const refInput = document.getElementById('payment-ref-' + stallId);
+      if (refInput) refInput.value = '';
+    }
+  }
+
+  function _checkOrderReady() {
+    const groups  = getCartGroups();
+    const btn     = document.getElementById('place-order-btn');
+    const hint    = document.getElementById('order-btn-hint');
+    if (!btn) return;
+    const ready = groups.every(g => {
+      const method = document.getElementById('payment-method-' + g.stallId)?.value;
+      if (method === 'cash_on_pickup') return true;
+      const ref = (document.getElementById('payment-ref-' + g.stallId)?.value || '').trim();
+      return ref.length > 0;
+    });
+    btn.disabled = !ready;
+    if (hint) hint.style.display = ready ? 'none' : 'block';
+  }
+
+  function _proofSelected(stallId, input) {
+    const label = document.getElementById('proof-name-' + stallId);
+    if (label && input.files[0]) label.textContent = '✓ ' + input.files[0].name;
   }
 
   async function placeOrder() {
@@ -724,6 +939,7 @@ var App = (() => {
 
       state.cart = [];
       updateCartBadge();
+      saveCart();
       showOrderSuccess(results);
     } catch { toast('Failed to place orders.', 'error'); }
     finally { setLoading(btn, false); }
@@ -767,12 +983,17 @@ var App = (() => {
   // CUSTOMER ORDERS
   // ================================================================
 
-  async function renderMyOrders() {
+  async function renderMyOrders(tab) {
     showPage('main');
     const el = document.getElementById('main-content');
+    tab = tab || 'active';
     el.innerHTML = `
       <div style="padding:20px;">
-        <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">My Orders</h2>
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">📦 My Orders</h2>
+        <div class="order-tabs">
+          <button class="order-tab${tab==='active'?' active':''}" onclick="App.renderMyOrders('active')">Active</button>
+          <button class="order-tab${tab==='history'?' active':''}" onclick="App.renderMyOrders('history')">History</button>
+        </div>
         <div id="orders-list"><div class="loader"><div class="spinner"></div></div></div>
       </div>`;
 
@@ -781,14 +1002,23 @@ var App = (() => {
       const list = document.getElementById('orders-list');
       if (!res.success) { list.innerHTML = `<div class="alert alert-danger">${res.error}</div>`; return; }
 
-      list.innerHTML = res.orders.length
-        ? res.orders.map(orderCardHTML).join('')
-        : '<p style="color:var(--text3);text-align:center;padding:40px 0;">No orders yet.</p>';
+      const active  = res.orders.filter(o => !['completed','cancelled'].includes(o.Status));
+      const history = res.orders.filter(o =>  ['completed','cancelled'].includes(o.Status));
+      const show    = tab === 'active' ? active : history;
+
+      list.innerHTML = show.length
+        ? show.map(orderCardHTML).join('')
+        : `<div class="empty-state"><div class="empty-icon">${tab==='active'?'📭':'🗂️'}</div><p>${tab==='active'?'No active orders.':'No order history yet.'}</p></div>`;
     } catch { toast('Failed to load orders.','error'); }
   }
 
   function orderCardHTML(o) {
     const itemSummary = (o.Items||[]).map(i => `${i.qty}× ${i.name}`).join(', ');
+    const payBadge = o.PaymentMethod !== 'cash_on_pickup'
+      ? (o.PaymentStatus === 'paid'
+          ? `<span class="verified-badge">✓ Verified</span>`
+          : `<span class="awaiting-badge">⏳ Awaiting</span>`)
+      : '';
     return `
       <div class="order-item" onclick="App.navigateTo('order-detail',{orderId:'${o.OrderID}'})">
         <div class="order-header">
@@ -797,8 +1027,9 @@ var App = (() => {
           <span class="order-time">${relTime(o.CreatedAt)}</span>
         </div>
         <div class="order-items-summary">${itemSummary}</div>
-        <div class="order-footer">
+        <div class="order-footer" style="flex-wrap:wrap;gap:6px;">
           <span class="order-id">${o.OrderID}</span>
+          ${payBadge}
           <span class="order-total">${peso(o.Total)}</span>
         </div>
       </div>`;
@@ -879,14 +1110,20 @@ var App = (() => {
   async function renderConcDashboard() {
     showPage('main');
     const el = document.getElementById('main-content');
+    const isOnline = state.stallData?.Status !== 'offline';
     el.innerHTML = `
       <div style="padding:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div>
             <h2 style="font-size:18px;font-weight:700;">${state.stallData?.StallName || 'My Stall'}</h2>
             <p style="font-size:13px;color:var(--text2);">Today's Dashboard</p>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="App.openHoursModal()">🕐 Hours</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="stall-status-toggle ${isOnline?'online':'offline'}" id="stall-toggle-btn" onclick="App.toggleStallOnline()">
+              ${isOnline ? '🟢 Online' : '🔴 Offline'}
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="App.openHoursModal()">🕐 Hours</button>
+          </div>
         </div>
         <div class="stats-grid" id="stats-grid"><div class="loader"><div class="spinner"></div></div></div>
         <h3 style="font-size:15px;font-weight:700;margin:20px 0 10px;">Active Orders</h3>
@@ -926,6 +1163,16 @@ var App = (() => {
       `<button class="btn btn-primary btn-sm" onclick="App.updateStatus('${o.OrderID}','${s}')">${l}</button>`
     ).join('');
 
+    const isEwallet   = o.PaymentMethod !== 'cash_on_pickup';
+    const isVerified  = o.PaymentStatus === 'paid';
+    const payRow = isEwallet ? `
+      <div style="margin:6px 0;font-size:13px;">
+        <span style="color:var(--text3);">Ref:</span> <strong>${o.PaymentRef || '—'}</strong>
+        ${isVerified
+          ? `<span class="verified-badge" style="margin-left:8px;">✓ Verified</span>`
+          : `<button class="btn btn-outline btn-sm" style="margin-left:8px;" onclick="App.verifyPayment('${o.OrderID}')">Verify Payment</button>`}
+      </div>` : '';
+
     return `
       <div class="order-item" style="margin-bottom:10px;">
         <div class="order-header">
@@ -933,7 +1180,8 @@ var App = (() => {
           ${statusBadge(o.Status)}
           <span class="order-time">${relTime(o.CreatedAt)}</span>
         </div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">${items}</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:4px;">${items}</div>
+        ${payRow}
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="order-id">${o.OrderID}</span>
           <span style="background:var(--g100);color:var(--g800);font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;">Code: ${o.PickupCode}</span>
@@ -941,6 +1189,12 @@ var App = (() => {
           ${actions}
         </div>
       </div>`;
+  }
+
+  async function verifyPayment(orderId) {
+    const res = await call('confirmPayment', state.token, orderId).catch(()=>null);
+    if (res?.success) { toast('✓ Payment verified!'); renderConcDashboard(); }
+    else toast(res?.error || 'Failed to verify payment.', 'error');
   }
 
   async function updateStatus(orderId, status, message) {
@@ -1151,6 +1405,22 @@ var App = (() => {
     const res = await call('setOperatingHours', state.token, input).catch(()=>null);
     if (res?.success) { if(state.stallData) state.stallData.OperatingHours = input; toast('Hours updated!'); }
     else toast('Failed to update hours.','error');
+  }
+
+  async function toggleStallOnline() {
+    const isOnline = state.stallData?.Status !== 'offline';
+    const goOnline = !isOnline;
+    const btn = document.getElementById('stall-toggle-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+    try {
+      const res = await call('toggleStallOnline', state.token, goOnline);
+      if (res.success) {
+        if (state.stallData) state.stallData.Status = goOnline ? 'active' : 'offline';
+        toast(goOnline ? '🟢 Stall is now Online' : '🔴 Stall is now Offline');
+        renderConcDashboard();
+      } else { toast(res.error || 'Failed to update status.', 'error'); }
+    } catch { toast('Failed to update status.', 'error'); }
+    finally { if (btn) btn.disabled = false; }
   }
 
   // ================================================================
@@ -1556,17 +1826,20 @@ var App = (() => {
   // ================================================================
   return {
     init, submitEmail, submitOTP, resendOTP, renderLoginStep1, renderLoginStep2, doLogout,
+    toggleUserMenu, closeUserMenu, showTerms,
     bootFromLogin: function(res) {
       state.token = res.token;
       if (!res.role && res.user) res = Object.assign({}, res, { role: res.user.role });
       bootSession(res);
     },
     navigateTo, doSearch, filterByCategory,
-    addToCart, changeQty, placeOrder,
-    _toggleRef,
+    addToCart, changeQty, removeCartItem, removeStallFromCart, placeOrder,
+    _toggleRef, _checkOrderReady, _proofSelected,
     cancelOrder, openRatingModal, selectStar, submitRating,
-    updateStatus, filterStallOrders,
-    openProductModal, saveProduct, toggleAvailability, deleteProduct, openHoursModal,
+    updateStatus, verifyPayment, filterStallOrders,
+    toggleStallOnline, openHoursModal,
+    toggleFavorite, renderFavorites, renderMyOrders, renderLocationMap,
+    openProductModal, saveProduct, toggleAvailability, deleteProduct,
     previewProductImage, previewFromURL,
     approveProduct,
     openAddUserModal, saveUser, deactivateUser,
