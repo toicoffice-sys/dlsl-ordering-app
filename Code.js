@@ -1,9 +1,14 @@
 // ============================================================
-// DLSL Ordering App — Code.js
-// Main entry point: routing, auth, sessions, utilities
+// DLSL Ordering App (GreenBite) — Google Apps Script
+// Version: 1.0.0
+// Last Updated: 2026-05-04
+// Developer: A2OM · DLSL TOIC
+// Description: Campus food & merchandise ordering app for DLSL
+// Changelog:
+//   v1.0.0 - 2026-05-04 - Move SPREADSHEET_ID to PropertiesService (security fix)
 // ============================================================
 
-const SPREADSHEET_ID   = '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI';
+const SPREADSHEET_ID   = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
 const IMAGES_FOLDER_NAME = 'DLSL Ordering App — Images';
 
 // ------------------------------------------------------------
