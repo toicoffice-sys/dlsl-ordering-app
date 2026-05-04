@@ -140,6 +140,8 @@ var App = (() => {
     // Hide Track My Order from menu for admin/concessionaire
     const trackBtn = document.getElementById('menu-track-btn');
     if (trackBtn) trackBtn.style.display = isCustomer ? '' : 'none';
+    const favBtn = document.querySelector('#user-dropdown-menu button[onclick*="favorites"]');
+    if (favBtn) favBtn.style.display = isCustomer ? '' : 'none';
     updateCartBadge();
     setupNavForRole(res.role);
     navigateTo('home');

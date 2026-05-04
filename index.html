@@ -138,6 +138,9 @@
         </button>
         <div class="user-dropdown-menu" id="user-dropdown-menu">
           <button id="menu-track-btn" onclick="App.closeUserMenu();App.navigateTo('orders')">📦 Track My Order</button>
+          <button onclick="App.closeUserMenu();App.navigateTo('favorites')">❤️ Favorites</button>
+          <button onclick="App.closeUserMenu();App.navigateTo('profile')">👤 Profile</button>
+          <hr class="menu-divider">
           <button onclick="App.closeUserMenu();App.showTerms()">📄 Terms &amp; Agreement</button>
           <hr class="menu-divider">
           <button class="danger-item" onclick="App.closeUserMenu();App.doLogout()">Sign Out</button>
