@@ -160,6 +160,22 @@ function notifyOrderStatusUpdate(email, name, orderId, stallName, status, pickup
   MailApp.sendEmail({ to: email, subject: `${subjects[status] || 'Order Update'} — ${orderId}`, htmlBody: body });
 }
 
+// Payment rejected — notify customer
+function notifyPaymentRejected(email, name, orderId, stallName, reason) {
+  if (!email) return;
+  const body = emailWrapper(`
+    <p>Hello, <strong>${name}</strong>,</p>
+    <p>Unfortunately, your payment for order <strong>${orderId}</strong> at <strong>${stallName}</strong> has been <strong>rejected</strong> by the concessionaire.</p>
+    <div style="background:#FFEBEE;border-left:4px solid #F44336;padding:14px 16px;border-radius:6px;margin:16px 0;">
+      <p style="margin:0;font-size:13px;font-weight:700;color:#c62828;">Reason:</p>
+      <p style="margin:6px 0 0;font-size:14px;color:#5D4037;">${reason || 'Payment could not be verified.'}</p>
+    </div>
+    <p>Your order has been <strong>cancelled</strong> and any deducted stock has been restored. Please re-order with a valid payment reference and screenshot.</p>
+    <p style="color:#757575;font-size:13px;">If you believe this is an error, please contact the stall directly.</p>
+  `);
+  MailApp.sendEmail({ to: email, subject: `Payment Rejected — Order ${orderId}`, htmlBody: body });
+}
+
 // Payment verified — notify customer
 function notifyPaymentVerified(email, name, orderId, stallName) {
   if (!email) return;

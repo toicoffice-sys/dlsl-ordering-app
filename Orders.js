@@ -228,6 +228,53 @@ function confirmPayment(token, orderId) {
 }
 
 // ------------------------------------------------------------
+// Concessionaire: reject payment (bogus/fake)
+// ------------------------------------------------------------
+
+function rejectPayment(token, orderId, reason) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+
+  const sheet   = getSheet(SHEETS.ORDERS);
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] !== orderId) continue;
+
+    const stallId  = rows[i][headers.indexOf('StallID')];
+    const ownStall = getStallByEmail(session.email);
+    const isAdmin  = session.role === ROLES.ADMIN;
+
+    if (!isAdmin && ownStall?.StallID !== stallId)
+      return { success: false, error: 'Unauthorized.' };
+
+    const currentStatus = rows[i][headers.indexOf('Status')];
+    if ([ORDER_STATUS.PREPARING, ORDER_STATUS.READY, ORDER_STATUS.COMPLETED].includes(currentStatus))
+      return { success: false, error: 'Cannot reject payment — order is already being prepared.' };
+
+    const customerEmail = rows[i][headers.indexOf('CustomerEmail')];
+    const customerName  = rows[i][headers.indexOf('CustomerName')];
+    const stallName     = rows[i][headers.indexOf('StallName')];
+
+    // Mark payment as rejected and cancel the order
+    sheet.getRange(i + 1, headers.indexOf('PaymentStatus') + 1).setValue('rejected');
+    sheet.getRange(i + 1, headers.indexOf('Status') + 1).setValue(ORDER_STATUS.CANCELLED);
+    sheet.getRange(i + 1, headers.indexOf('UpdatedAt') + 1).setValue(now());
+
+    // Restore stock
+    const items = safeParseJSON(rows[i][headers.indexOf('Items')]);
+    restoreStock(items);
+
+    // Notify customer
+    notifyPaymentRejected(customerEmail, customerName, orderId, stallName, reason);
+
+    return { success: true };
+  }
+  return { success: false, error: 'Order not found.' };
+}
+
+// ------------------------------------------------------------
 // Customer: cancel order
 // ------------------------------------------------------------
 

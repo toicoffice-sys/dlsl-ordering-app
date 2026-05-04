@@ -190,6 +190,28 @@
     </div>
   </div>
 
+  <!-- Reject Payment Modal -->
+  <div class="modal-overlay" id="modal-reject-payment">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>❌ Reject Payment</h3>
+        <button class="modal-close" onclick="document.getElementById('modal-reject-payment').classList.remove('open')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="reject-order-id">
+        <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">This will cancel the order and notify the customer via email. Please provide a reason.</p>
+        <div class="form-group">
+          <label class="form-label">Reason for Rejection *</label>
+          <textarea class="form-control" id="reject-reason" rows="4" placeholder="e.g. Payment reference not found, screenshot is unclear, amount does not match…" style="resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-reject-payment').classList.remove('open')">Cancel</button>
+        <button class="btn btn-danger" id="reject-payment-btn" onclick="App.submitRejectPayment()">Reject &amp; Notify Customer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- A2OM Footer -->
   <footer style="background:#1A3A5C;color:#fff;text-align:center;padding:12px;font-size:12px;display:none;" id="app-footer">
     <a href="https://toic.dlsl.edu.ph/services" target="_blank" style="color:#C8A951;text-decoration:none;font-weight:600;">A2OM Automation · De La Salle Lipa — TOIC</a>

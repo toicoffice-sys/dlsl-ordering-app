@@ -1252,7 +1252,8 @@ var App = (() => {
         <strong>${o.PaymentRef || '—'}</strong>
         ${isVerified
           ? `<span class="verified-badge">✓ Payment Verified</span>`
-          : `<button class="btn btn-outline btn-sm" onclick="App.verifyPayment('${o.OrderID}')">✅ Verify Payment</button>`}
+          : `<button class="btn btn-outline btn-sm" onclick="App.verifyPayment('${o.OrderID}')">✅ Verify Payment</button>
+             <button class="btn btn-sm" style="background:#FFEBEE;color:#c62828;border:1px solid #ef9a9a;" onclick="App.openRejectPaymentModal('${o.OrderID}')">❌ Reject</button>`}
       </div>
       ${awaitingPayment ? `<div style="background:#FFF8E1;border-left:3px solid #F9A825;padding:7px 10px;font-size:12px;color:#5D4037;border-radius:4px;margin-bottom:6px;">⚠️ Verify payment before processing this order.</div>` : ''}
     ` : '';
@@ -1282,6 +1283,30 @@ var App = (() => {
     const res = await call('confirmPayment', state.token, orderId).catch(()=>null);
     if (res?.success) { toast('✓ Payment verified!'); renderConcDashboard(); }
     else toast(res?.error || 'Failed to verify payment.', 'error');
+  }
+
+  function openRejectPaymentModal(orderId) {
+    document.getElementById('reject-order-id').value = orderId;
+    document.getElementById('reject-reason').value   = '';
+    openModal('modal-reject-payment');
+  }
+
+  async function submitRejectPayment() {
+    const orderId = document.getElementById('reject-order-id').value;
+    const reason  = document.getElementById('reject-reason').value.trim();
+    if (!reason) { toast('Please enter a reason for rejection.', 'error'); return; }
+    const btn = document.getElementById('reject-payment-btn');
+    setLoading(btn, true);
+    try {
+      const res = await call('rejectPayment', state.token, orderId, reason);
+      if (res.success) {
+        closeModal('modal-reject-payment');
+        toast('Payment rejected and customer notified.', 'success');
+        const isOrders = state.view === 'orders';
+        if (isOrders) renderStallOrders(); else renderConcDashboard();
+      } else toast(res.error || 'Failed to reject payment.', 'error');
+    } catch { toast('Failed.', 'error'); }
+    finally { setLoading(btn, false); }
   }
 
   async function updateStatus(orderId, status, message) {
@@ -2189,7 +2214,7 @@ var App = (() => {
     addToCart, changeQty, removeCartItem, removeStallFromCart, placeOrder,
     _toggleRef, _checkOrderReady, _proofSelected, _clearProof,
     cancelOrder, openRatingModal, selectStar, submitRating,
-    updateStatus, verifyPayment, filterStallOrders, renderStallOrders,
+    updateStatus, verifyPayment, openRejectPaymentModal, submitRejectPayment, filterStallOrders, renderStallOrders,
     toggleStallOnline, openHoursModal,
     toggleFavorite, renderFavorites, renderMyOrders, renderLocationMap,
     openProductModal, saveProduct, toggleAvailability, deleteProduct,
