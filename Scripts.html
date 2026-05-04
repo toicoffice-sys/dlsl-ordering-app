@@ -328,6 +328,7 @@ var App = (() => {
           { id:'home',     icon:'📊', label:'Dashboard' },
           { id:'products', icon:'🍽️', label:'Menu' },
           { id:'orders',   icon:'📦', label:'Orders' },
+          { id:'reports',  icon:'📈', label:'Reports' },
           { id:'users',    icon:'👥', label:'Staff' }
         ]}
       ];
@@ -387,7 +388,10 @@ var App = (() => {
         else renderConcUsers();
         break;
       case 'stalls':    renderAdminStalls(); break;
-      case 'reports':   renderAdminReports(); break;
+      case 'reports':
+        if (state.role === 'admin') renderAdminReports();
+        else renderConcReports();
+        break;
       case 'profile':   renderProfile(); break;
       case 'favorites': renderFavorites(); break;
       case 'location':  renderLocationMap(); break;
@@ -2015,6 +2019,71 @@ var App = (() => {
     else toast('Failed.','error');
   }
 
+  // ================================================================
+  // CONCESSIONAIRE REPORTS
+  // ================================================================
+
+  async function renderConcReports() {
+    showPage('main');
+    const el = document.getElementById('main-content');
+    const today = new Date().toISOString().substring(0,10);
+    const startOfMonth = today.substring(0,7) + '-01';
+
+    el.innerHTML = `
+      <div style="padding:20px;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">Sales Reports</h2>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">${state.stallData?.StallName || 'My Stall'}</p>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="conc-rep-start" value="${startOfMonth}"></div>
+              <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="conc-rep-end" value="${today}"></div>
+            </div>
+            <button class="btn btn-primary" onclick="App.loadConcReport()">Generate Report</button>
+          </div>
+        </div>
+        <div id="conc-report-content"></div>
+      </div>`;
+  }
+
+  async function loadConcReport() {
+    const start = document.getElementById('conc-rep-start').value;
+    const end   = document.getElementById('conc-rep-end').value;
+    const el    = document.getElementById('conc-report-content');
+    el.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+    try {
+      const res = await call('getSalesReport', state.token, start, end);
+      if (!res.success) { el.innerHTML = `<div class="alert alert-danger">${res.error}</div>`; return; }
+
+      const r = res.report;
+      el.innerHTML = `
+        <div class="stats-grid" style="margin-bottom:16px;">
+          <div class="stat-card"><div class="stat-value">${r.totalOrders}</div><div class="stat-label">Total Orders</div></div>
+          <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(r.totalRevenue)}</div><div class="stat-label">Total Revenue</div></div>
+          <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(r.averageOrderValue)}</div><div class="stat-label">Avg Order Value</div></div>
+        </div>
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-header"><h2>Top Products</h2></div>
+          <div class="card-body">
+            ${r.topProducts.length ? `<div class="table-wrap"><table>
+              <tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr>
+              ${r.topProducts.map((p,i) => `<tr><td>${i+1}</td><td><strong>${p.name}</strong></td><td>${p.qty}</td><td>${peso(p.revenue)}</td></tr>`).join('')}
+            </table></div>` : '<p style="color:var(--text3);text-align:center;padding:20px 0;">No data for this period.</p>'}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Daily Sales</h2></div>
+          <div class="card-body">
+            ${r.dailyRevenue.length ? `<div class="table-wrap"><table>
+              <tr><th>Date</th><th>Revenue</th></tr>
+              ${r.dailyRevenue.map(d => `<tr><td>${d.date}</td><td>${peso(d.total)}</td></tr>`).join('')}
+            </table></div>` : '<p style="color:var(--text3);text-align:center;padding:20px 0;">No data for this period.</p>'}
+          </div>
+        </div>`;
+    } catch { el.innerHTML = '<div class="alert alert-danger">Failed to generate report.</div>'; }
+  }
+
   async function renderAdminReports() {
     showPage('main');
     const el = document.getElementById('main-content');
@@ -2130,7 +2199,7 @@ var App = (() => {
     openEditUserModal, saveEditUser, _toggleEditStallField,
     renderConcUsers, openConcAddUserModal, saveConcStaff,
     openAddStallModal, saveStall, approveStall, previewStallImage,
-    loadReport,
+    loadReport, renderConcReports, loadConcReport,
     openModal, closeModal
   };
 })();
