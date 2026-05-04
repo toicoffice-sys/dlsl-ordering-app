@@ -318,7 +318,9 @@ var App = (() => {
         <span>${t.label}</span>
       </button>`).join('');
 
-    navItems.innerHTML = tabList.map(t =>
+    // Customers: no top nav buttons (bottom nav handles navigation)
+    const topNavList = (role === 'admin' || role === 'concessionaire') ? tabList : [];
+    navItems.innerHTML = topNavList.map(t =>
       `<button class="topnav-btn" onclick="App.navigateTo('${t.id}')">${t.label}</button>`
     ).join('');
   }
