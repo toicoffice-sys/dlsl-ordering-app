@@ -21,8 +21,37 @@ function savePaymentProof(base64Data, mimeType, filename) {
     const blob    = Utilities.newBlob(decoded, mimeType || 'image/jpeg', filename || 'proof.jpg');
     const file    = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+    // Store just the file ID so we can serve it via getPaymentProof()
+    return 'drive:' + file.getId();
   } catch (e) { return ''; }
+}
+
+// Serve proof of payment as base64 through GAS (avoids Drive domain restrictions)
+function getPaymentProof(token, orderId) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+
+  const order = sheetToObjects(getSheet(SHEETS.ORDERS)).find(r => r.OrderID === orderId);
+  if (!order) return { success: false, error: 'Order not found.' };
+
+  const isOwner = order.CustomerEmail.toLowerCase() === session.email.toLowerCase();
+  const isStaff = session.role === ROLES.ADMIN || session.role === ROLES.CONCESSIONAIRE;
+  if (!isOwner && !isStaff) return { success: false, error: 'Unauthorized.' };
+  if (!order.ProofURL) return { success: false, error: 'No proof attached.' };
+
+  try {
+    // Support both old drive.google.com URLs and new 'drive:ID' format
+    const fileId = order.ProofURL.startsWith('drive:')
+      ? order.ProofURL.slice(6)
+      : order.ProofURL.replace('https://drive.google.com/uc?export=view&id=', '');
+    const file     = DriveApp.getFileById(fileId);
+    const blob     = file.getBlob();
+    const base64   = Utilities.base64Encode(blob.getBytes());
+    const mimeType = blob.getContentType() || 'image/jpeg';
+    return { success: true, data: base64, mimeType };
+  } catch(e) {
+    return { success: false, error: 'Unable to load proof: ' + e.message };
+  }
 }
 
 // ------------------------------------------------------------
@@ -55,15 +84,17 @@ function uploadImage(token, base64Data, mimeType, filename) {
 }
 
 const SHEETS = {
-  USERS:           'Users',
-  CONCESSIONAIRES: 'Concessionaires',
-  PRODUCTS:        'Products',
-  ORDERS:          'Orders',
-  ORDER_ITEMS:     'OrderItems',
-  RATINGS:         'Ratings',
-  SESSIONS:        'Sessions',
-  OTPS:            'OTPs',
-  ANNOUNCEMENTS:   'Announcements'
+  USERS:             'Users',
+  CONCESSIONAIRES:   'Concessionaires',
+  PRODUCTS:          'Products',
+  ORDERS:            'Orders',
+  ORDER_ITEMS:       'OrderItems',
+  RATINGS:           'Ratings',
+  SESSIONS:          'Sessions',
+  OTPS:              'OTPs',
+  ANNOUNCEMENTS:     'Announcements',
+  AUDIT_LOG:         'AuditLog',
+  SCHEDULED_REPORTS: 'ScheduledReports'
 };
 
 const ROLES = {
@@ -205,6 +236,8 @@ function verifyOTP(email, code) {
       stallData = getStallByEmail(email);
     }
 
+    logAudit(email, 'LOGIN', 'Auth', userData.id, `Role: ${userData.role}`);
+
     return {
       success: true,
       token,
@@ -227,7 +260,12 @@ function logout(token) {
   const sheet = getSheet(SHEETS.SESSIONS);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === token) { sheet.deleteRow(i + 1); return { success: true }; }
+    if (rows[i][0] === token) {
+      const email = rows[i][1];
+      sheet.deleteRow(i + 1);
+      logAudit(email, 'LOGOUT', 'Auth', '', '');
+      return { success: true };
+    }
   }
   return { success: false };
 }
@@ -311,7 +349,9 @@ function initSheetHeaders(sheet, name) {
     [SHEETS.RATINGS]:         ['RatingID','CustomerEmail','StallID','OrderID','Stars','Comment','CreatedAt'],
     [SHEETS.SESSIONS]:        ['Token','Email','Role','UserData','ExpiresAt'],
     [SHEETS.OTPS]:            ['Email','OTP','ExpiresAt','Attempts','SentAt'],
-    [SHEETS.ANNOUNCEMENTS]:   ['AnnID','Title','Body','Author','CreatedAt','ExpiresAt']
+    [SHEETS.ANNOUNCEMENTS]:    ['AnnID','Title','Body','Author','CreatedAt','ExpiresAt'],
+    [SHEETS.AUDIT_LOG]:        ['LogID','Timestamp','UserEmail','Action','Module','RecordID','Details'],
+    [SHEETS.SCHEDULED_REPORTS]:['ReportID','Name','Frequency','Recipients','LastSent','IsActive','CreatedAt']
   };
   const h = map[name];
   if (!h) return;
@@ -333,6 +373,20 @@ function sheetToObjects(sheet) {
   return data.slice(1).map(row =>
     Object.fromEntries(headers.map((h, i) => [h, row[i]]))
   );
+}
+
+// ------------------------------------------------------------
+// Audit Log
+// ------------------------------------------------------------
+
+function logAudit(userEmail, action, module_, recordId, details) {
+  try {
+    getSheet(SHEETS.AUDIT_LOG).appendRow([
+      genId('LOG'), new Date().toISOString(), userEmail || '',
+      action, module_ || '', recordId || '',
+      typeof details === 'object' ? JSON.stringify(details) : (details || '')
+    ]);
+  } catch(e) {} // non-critical — never break the main flow
 }
 
 function getStallByEmail(email) {
