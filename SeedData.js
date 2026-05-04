@@ -3,6 +3,19 @@
 // Run seedSampleData() once from the Apps Script editor
 // ============================================================
 
+/**
+ * ▶ RUN THIS FIRST — one-time setup.
+ * Sets the SPREADSHEET_ID in Script Properties so the app can
+ * find its data spreadsheet. Run from Apps Script editor:
+ * Extensions > Apps Script > select setupScriptProperties > Run
+ */
+function setupScriptProperties() {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('SPREADSHEET_ID', '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI');
+  Logger.log('✅ Script Properties set successfully.');
+  Logger.log('SPREADSHEET_ID = ' + props.getProperty('SPREADSHEET_ID'));
+}
+
 function seedSampleData() {
   seedUsers();
   seedConcessionaires();
