@@ -909,6 +909,7 @@ var App = (() => {
   function _proofSelected(stallId, input) {
     const label = document.getElementById('proof-name-' + stallId);
     if (label && input.files[0]) label.textContent = '✓ ' + input.files[0].name;
+    _checkOrderReady();
   }
 
   async function placeOrder() {
