@@ -640,3 +640,73 @@ function getSalesReportRaw(startDate, endDate, stallId) {
   const totalRevenue = filtered.reduce((s, r) => s + Number(r.Total || 0), 0);
   return { success: true, report: { totalOrders: filtered.length, totalRevenue } };
 }
+
+// ------------------------------------------------------------
+// DLSP Shared Supplier Database — read-only integration
+// Reads the Suppliers sheet from the DLSP database spreadsheet
+// using the SUPPLIER_DB_ID Script Property.
+// ------------------------------------------------------------
+
+function getSharedSuppliers(token, query) {
+  const g = requireAdmin(token);
+  if (!g.ok) return { success: false, error: g.error };
+
+  const dbId = PropertiesService.getScriptProperties().getProperty('SUPPLIER_DB_ID');
+  if (!dbId) return {
+    success: false,
+    error: 'SUPPLIER_DB_ID not configured. Set the DLSP supplier spreadsheet ID in Script Properties.'
+  };
+
+  try {
+    const ss    = SpreadsheetApp.openById(dbId);
+    const sheet = ss.getSheetByName('Suppliers');
+    if (!sheet) return { success: false, error: 'Suppliers sheet not found in the shared database.' };
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return { success: true, suppliers: [] };
+
+    const headers = data[0];
+    const iActive = headers.indexOf('IsActive');
+    const iName   = headers.indexOf('CompanyName');
+
+    let rows = data.slice(1)
+      .filter(r => {
+        if (!r[iName]) return false; // skip blank rows
+        const active = String(r[iActive] ?? '').toUpperCase().trim();
+        return active !== 'FALSE' && active !== 'NO' && active !== '0';
+      })
+      .map(r => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = r[i]);
+        return obj;
+      });
+
+    if (query && query.trim()) {
+      const q = query.trim().toLowerCase();
+      rows = rows.filter(s =>
+        ['CompanyName','TradeName','Category','SupplierEmail','ContactPerson','City','Address']
+          .some(f => String(s[f] ?? '').toLowerCase().includes(q))
+      );
+    }
+
+    // Return only the fields relevant for importing into the ordering app
+    const suppliers = rows.map(s => ({
+      SupplierID:       s.SupplierID      || '',
+      CompanyName:      s.CompanyName     || '',
+      TradeName:        s.TradeName       || '',
+      Email:            s.SupplierEmail   || '',
+      ContactPerson:    s.ContactPerson   || '',
+      ContactNumber:    s.ContactNumber   || '',
+      Category:         s.Category        || '',
+      Address:          s.Address         || '',
+      City:             s.City            || '',
+      AccredStatus:     s.AccredStatus    || '',
+      CentralVerified:  s.CentralVerified === true || s.CentralVerified === 'TRUE',
+      RegisteredSchool: s.RegisteredSchool || '',
+    }));
+
+    return { success: true, suppliers, total: suppliers.length };
+  } catch(e) {
+    return { success: false, error: 'Failed to connect to DLSP Supplier Database: ' + e.message };
+  }
+}

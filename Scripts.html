@@ -2225,6 +2225,10 @@ var App = (() => {
         <div class="modal">
           <div class="modal-header"><h3>🏪 Add Concessionaire</h3><button class="modal-close" onclick="App.closeModal('modal-add-stall')">✕</button></div>
           <div class="modal-body">
+            <div style="margin-bottom:14px;padding:10px 14px;background:#f0f7ff;border-radius:8px;border:1px solid #bdd7f5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:13px;color:#1A3A5C;flex:1;">Registered in DLSP Supplier Database?</span>
+              <button class="btn btn-outline btn-sm" onclick="App.openSupplierSearch()" style="border-color:#1A3A5C;color:#1A3A5C;font-size:12px;">🔍 Import from DLSP DB</button>
+            </div>
             <!-- Logo upload -->
             <div class="form-group">
               <label class="form-label">Stall Banner / Logo</label>
@@ -2702,6 +2706,103 @@ var App = (() => {
   }
 
   // ================================================================
+  // DLSP SHARED SUPPLIER DATABASE — Search & Import
+  // ================================================================
+
+  function supplierSearchModal() {
+    return `
+      <div class="modal-overlay" id="modal-supplier-search">
+        <div class="modal" style="max-width:680px;">
+          <div class="modal-header">
+            <h3>🔍 DLSP Shared Supplier Database</h3>
+            <button class="modal-close" onclick="App.closeModal('modal-supplier-search')">✕</button>
+          </div>
+          <div class="modal-body">
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+              <input class="form-control" id="supplier-search-q" placeholder="Search by company name, category, city…" style="flex:1;"
+                onkeydown="if(event.key==='Enter')App.searchSharedSuppliers()">
+              <button class="btn btn-primary btn-sm" id="supplier-search-btn" onclick="App.searchSharedSuppliers()">Search</button>
+            </div>
+            <div id="supplier-search-results" style="max-height:380px;overflow-y:auto;">
+              <div style="text-align:center;color:var(--text3);padding:32px;font-size:14px;">
+                Enter a search term above, or leave blank to browse all accredited suppliers.
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="App.closeModal('modal-supplier-search')">Close</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openSupplierSearch() {
+    if (!document.getElementById('modal-supplier-search')) {
+      document.body.insertAdjacentHTML('beforeend', supplierSearchModal());
+    }
+    document.getElementById('supplier-search-q').value = '';
+    document.getElementById('supplier-search-results').innerHTML =
+      '<div style="text-align:center;color:var(--text3);padding:32px;font-size:14px;">Enter a search term above, or leave blank to browse all accredited suppliers.</div>';
+    openModal('modal-supplier-search');
+  }
+
+  async function searchSharedSuppliers() {
+    const q   = document.getElementById('supplier-search-q').value.trim();
+    const btn = document.getElementById('supplier-search-btn');
+    const res_el = document.getElementById('supplier-search-results');
+    setLoading(btn, true);
+    res_el.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    try {
+      const res = await call('getSharedSuppliers', state.token, q);
+      if (!res.success) { res_el.innerHTML = `<div style="padding:24px;color:var(--danger);text-align:center;">${res.error}</div>`; return; }
+      if (!res.suppliers.length) {
+        res_el.innerHTML = '<div style="padding:24px;color:var(--text3);text-align:center;">No suppliers found. Try a different search term.</div>';
+        return;
+      }
+      res_el.innerHTML = res.suppliers.map(s => {
+        const badge = s.CentralVerified
+          ? `<span style="font-size:10px;background:#1B5E20;color:#fff;padding:2px 7px;border-radius:10px;margin-left:4px;">✓ Verified</span>` : '';
+        const statusColor = s.AccredStatus === 'Active' ? 'var(--success)' : s.AccredStatus === 'Expired' ? 'var(--danger)' : 'var(--warn)';
+        return `
+          <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:14px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+                ${s.CompanyName}${badge}
+                ${s.TradeName && s.TradeName !== s.CompanyName ? `<span style="font-size:12px;color:var(--text3);">(${s.TradeName})</span>` : ''}
+              </div>
+              <div style="font-size:12px;color:var(--text3);margin-top:2px;">
+                ${s.Category || ''}${s.City ? ' · ' + s.City : ''}${s.RegisteredSchool ? ' · ' + s.RegisteredSchool : ''}
+              </div>
+              ${s.Email ? `<div style="font-size:12px;color:var(--text2);margin-top:1px;">✉ ${s.Email}</div>` : ''}
+              ${s.AccredStatus ? `<div style="font-size:11px;font-weight:600;color:${statusColor};margin-top:3px;">${s.AccredStatus}</div>` : ''}
+            </div>
+            <button class="btn btn-primary btn-sm" style="white-space:nowrap;flex-shrink:0;"
+              onclick="App.importSupplier(${JSON.stringify(s).replace(/"/g,'&quot;')})">Import</button>
+          </div>`;
+      }).join('');
+    } catch(e) {
+      res_el.innerHTML = `<div style="padding:24px;color:var(--danger);text-align:center;">Connection error: ${e.message}</div>`;
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  function importSupplier(s) {
+    // Populate Add Concessionaire form fields from supplier record
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    set('s-name',  s.CompanyName || s.TradeName || '');
+    set('s-email', s.Email || '');
+    set('s-loc',   [s.Address, s.City].filter(Boolean).join(', '));
+    set('s-desc',  [
+      s.Category      ? 'Category: ' + s.Category : '',
+      s.ContactPerson ? 'Contact: '  + s.ContactPerson + (s.ContactNumber ? ' (' + s.ContactNumber + ')' : '') : '',
+      s.AccredStatus  ? 'Accreditation: ' + s.AccredStatus : '',
+    ].filter(Boolean).join(' | '));
+    closeModal('modal-supplier-search');
+    toast('✓ Supplier details imported. Review and save.', 'success');
+  }
+
+  // ================================================================
   // Public API
   // ================================================================
   return {
@@ -2727,6 +2828,7 @@ var App = (() => {
     renderConcUsers, openConcAddUserModal, saveConcStaff,
     fixHeaders, repairOrders,
     openAddStallModal, saveStall, approveStall, previewStallImage,
+    openSupplierSearch, searchSharedSuppliers, importSupplier,
     loadReport, renderConcReports, loadConcReport,
     doExportCSV, doPrintReport, doEmailReport,
     renderAnalytics, loadAnalytics,
