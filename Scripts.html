@@ -1414,7 +1414,7 @@ var App = (() => {
       const active    = (ordersRes.orders||[]).filter(o => !['completed','cancelled'].includes(o.Status));
       const completed = (ordersRes.orders||[]).filter(o =>  ['completed','cancelled'].includes(o.Status));
       document.getElementById('active-orders').innerHTML = active.length
-        ? active.map(o => concOrderCard(o)).join('')
+        ? active.map((o, i) => concOrderCard(o, i)).join('')
         : `<div style="text-align:center;padding:20px 0;">
              <p style="color:var(--text3);margin-bottom:10px;">No active orders right now.</p>
              ${completed.length ? `<button class="btn btn-outline btn-sm" onclick="App.renderStallOrders('history')">View ${completed.length} completed order${completed.length>1?'s':''} →</button>` : ''}
@@ -1422,7 +1422,7 @@ var App = (() => {
     } catch { toast('Dashboard load error.','error'); }
   }
 
-  function concOrderCard(o) {
+  function concOrderCard(o, idx = 0) {
     const items = (o.Items||[]).map(i => `${i.qty}× ${i.name}`).join(', ');
     const nextActions = {
       pending:   [['confirmed','✅ Confirm'],['cancelled','❌ Cancel']],
@@ -1434,39 +1434,50 @@ var App = (() => {
       `<button class="btn btn-primary btn-sm" onclick="App.updateStatus('${o.OrderID}','${s}')">${l}</button>`
     ).join('');
 
-    const isEwallet        = o.PaymentMethod !== 'cash_on_pickup';
-    const isVerified       = o.PaymentStatus === 'paid';
-    const awaitingPayment  = isEwallet && !isVerified;
+    const isEwallet       = o.PaymentMethod !== 'cash_on_pickup';
+    const isVerified      = o.PaymentStatus === 'paid';
+    const awaitingPayment = isEwallet && !isVerified && o.PaymentStatus !== 'rejected';
+    const displayActions  = awaitingPayment ? '' : actions;
 
-    const payRow = isEwallet ? `
-      <div style="margin:6px 0;font-size:13px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-        <span style="color:var(--text3);">${o.PaymentMethod === 'gcash' ? 'GCash' : 'Maya'} Ref:</span>
-        <strong>${o.PaymentRef || '—'}</strong>
-        ${o.ProofURL ? `<button class="btn btn-outline btn-sm" onclick="App.viewProof('${o.OrderID}')">🖼️ View Proof</button>` : ''}
+    // Alternating row background
+    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F1F8E9';
+
+    // Payment section (e-wallet only)
+    const payMethodLabel = o.PaymentMethod === 'gcash' ? '🟦 GCash' : '💙 Maya';
+    const paySection = isEwallet ? `
+      <div style="background:${awaitingPayment?'#FFFDE7':'#F9FBE7'};border-left:3px solid ${awaitingPayment?'#F9A825':'#AED581'};border-radius:0 6px 6px 0;padding:8px 12px;margin:8px 0;display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
+        <span style="font-size:12px;font-weight:700;">${payMethodLabel}</span>
+        <span style="font-size:12px;color:var(--text3);">Ref: <strong style="color:var(--text1);">${o.PaymentRef||'—'}</strong></span>
         ${isVerified
-          ? `<span class="verified-badge">✓ Payment Verified</span>`
-          : `<button class="btn btn-outline btn-sm" onclick="App.verifyPayment('${o.OrderID}')">✅ Verify Payment</button>
-             <button class="btn btn-sm" style="background:#FFEBEE;color:#c62828;border:1px solid #ef9a9a;" onclick="App.openRejectPaymentModal('${o.OrderID}')">❌ Reject</button>`}
+          ? `<span class="verified-badge">✓ Verified</span>`
+          : `<span style="font-size:12px;font-weight:700;color:#F9A825;">⏳ Awaiting Verification</span>`}
+        ${o.ProofURL
+          ? `<button class="btn btn-sm" style="background:#E3F2FD;color:#1565C0;border:1px solid #90CAF9;font-weight:600;" onclick="App.viewProof('${o.OrderID}','${o.CustomerName}')">🖼️ View Proof</button>`
+          : `<span style="font-size:11px;color:var(--text3);font-style:italic;">No proof uploaded</span>`}
+        ${!isVerified && o.PaymentStatus !== 'rejected'
+          ? `<button class="btn btn-outline btn-sm" onclick="App.verifyPayment('${o.OrderID}')">✅ Verify</button>
+             <button class="btn btn-sm" style="background:#FFEBEE;color:#c62828;border:1px solid #ef9a9a;" onclick="App.openRejectPaymentModal('${o.OrderID}')">❌ Reject</button>`
+          : ''}
       </div>
-      ${awaitingPayment ? `<div style="background:#FFF8E1;border-left:3px solid #F9A825;padding:7px 10px;font-size:12px;color:#5D4037;border-radius:4px;margin-bottom:6px;">⚠️ Verify payment before processing this order.</div>` : ''}
+      ${awaitingPayment ? `<div style="background:#FFF8E1;border-radius:4px;padding:5px 10px;font-size:12px;color:#5D4037;margin-bottom:6px;">⚠️ Verify payment before processing.</div>` : ''}
     ` : '';
 
-    // Block status actions for unverified e-wallet orders
-    const displayActions = awaitingPayment ? '' : actions;
-
     return `
-      <div class="order-item" style="margin-bottom:10px;">
-        <div class="order-header">
-          <strong>${o.CustomerName}</strong>
-          ${statusBadge(o.Status)}
-          <span class="order-time">${relTime(o.CreatedAt)}</span>
+      <div style="background:${bg};border:1px solid #E8F5E9;border-radius:10px;padding:14px 16px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+          <div>
+            <div style="font-weight:700;font-size:14px;">${o.CustomerName}</div>
+            <div style="font-size:12px;color:var(--text3);">${relTime(o.CreatedAt)} · <span style="font-family:monospace;">${o.OrderID}</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${statusBadge(o.Status)}
+            <span style="font-size:13px;font-weight:700;color:var(--g800);">${peso(o.Total)}</span>
+          </div>
         </div>
         <div style="font-size:13px;color:var(--text2);margin-bottom:4px;">${items}</div>
-        ${payRow}
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span class="order-id">${o.OrderID}</span>
-          <span style="background:var(--g100);color:var(--g800);font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;">Code: ${o.PickupCode}</span>
-          <span class="order-total">${peso(o.Total)}</span>
+        ${paySection}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <span style="background:var(--g100);color:var(--g800);font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;">🎫 ${o.PickupCode}</span>
           ${displayActions}
         </div>
       </div>`;
@@ -1573,7 +1584,7 @@ var App = (() => {
           <div style="font-size:12px;font-weight:700;color:var(--g700);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding:0 2px;">
             👤 ${g.name}
           </div>
-          ${g.orders.map(o => concOrderCard(o)).join('')}
+          ${g.orders.map((o, i) => concOrderCard(o, gi * 100 + i)).join('')}
         `).join('');
       }
     } catch { toast('Failed to load orders.','error'); }
