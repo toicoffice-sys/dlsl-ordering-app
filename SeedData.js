@@ -18,6 +18,50 @@ function setupScriptProperties() {
   Logger.log('PROOFS_FOLDER_ID = ' + props.getProperty('PROOFS_FOLDER_ID'));
 }
 
+/**
+ * ▶ ONE-TIME MIGRATION — run from Apps Script editor to move all existing
+ * proof files from "DLSL Ordering App — Payment Proofs" into the assigned
+ * GreenBite/ProofOfPayment folder (PROOFS_FOLDER_ID).
+ */
+function runMigrateProofFiles() {
+  const targetId     = PropertiesService.getScriptProperties().getProperty('PROOFS_FOLDER_ID');
+  if (!targetId) { Logger.log('❌ PROOFS_FOLDER_ID not set. Run setupScriptProperties() first.'); return; }
+
+  const targetFolder = DriveApp.getFolderById(targetId);
+  Logger.log('Target folder: ' + targetFolder.getName() + ' (' + targetId + ')');
+
+  let moved   = 0;
+  let skipped = 0;
+  const errors = [];
+
+  // Move every file from the old named folder
+  const oldIt = DriveApp.getFoldersByName('DLSL Ordering App — Payment Proofs');
+  while (oldIt.hasNext()) {
+    const oldFolder = oldIt.next();
+    if (oldFolder.getId() === targetId) {
+      Logger.log('⏭ Skipping — old folder IS the target folder.');
+      continue;
+    }
+    Logger.log('Source folder: ' + oldFolder.getName() + ' (' + oldFolder.getId() + ')');
+    const files = oldFolder.getFiles();
+    while (files.hasNext()) {
+      const file = files.next();
+      try {
+        targetFolder.addFile(file);
+        oldFolder.removeFile(file);
+        moved++;
+        Logger.log('  ✅ Moved: ' + file.getName());
+      } catch (e) {
+        errors.push(file.getName() + ': ' + e.message);
+        Logger.log('  ❌ Error: ' + file.getName() + ' — ' + e.message);
+      }
+    }
+  }
+
+  Logger.log('─────────────────────────────────');
+  Logger.log('Done. Moved: ' + moved + ' | Skipped: ' + skipped + ' | Errors: ' + errors.length);
+}
+
 function seedSampleData() {
   seedUsers();
   seedConcessionaires();
