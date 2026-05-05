@@ -1,12 +1,13 @@
 // ============================================================
 // DLSL Ordering App (GreenBite) — Google Apps Script
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Updated: 2026-05-05
 // Developer: A2OM · DLSL TOIC
 // Description: Campus food & merchandise ordering app for DLSL
 // Changelog:
 //   v1.0.0 - 2026-05-04 - Move SPREADSHEET_ID to PropertiesService (security fix)
 //   v1.1.0 - 2026-05-05 - Save proofs to fixed Drive folder; add shareProofFolder admin function
+//   v1.2.0 - 2026-05-05 - Add migrateProofFiles to move existing proofs to assigned folder
 // ============================================================
 
 const SPREADSHEET_ID        = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
@@ -73,6 +74,81 @@ function shareProofFolder(token) {
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+// Migrate existing proof files from old named folder (or root) into the assigned PROOFS_FOLDER_ID
+function migrateProofFiles(token) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+  if (session.role !== ROLES.ADMIN) return { success: false, error: 'Admin only.' };
+
+  const targetFolder = _getProofsFolder();
+  const targetId     = targetFolder.getId();
+
+  let moved  = 0;
+  let skipped = 0;
+  const errors = [];
+
+  // 1. Move files from old named folder (if it exists and differs from target)
+  const OLD_FOLDER_NAME = 'DLSL Ordering App — Payment Proofs';
+  const oldIt = DriveApp.getFoldersByName(OLD_FOLDER_NAME);
+  while (oldIt.hasNext()) {
+    const oldFolder = oldIt.next();
+    if (oldFolder.getId() === targetId) { skipped++; continue; }  // already the right folder
+    const files = oldFolder.getFiles();
+    while (files.hasNext()) {
+      const file = files.next();
+      try {
+        targetFolder.addFile(file);
+        oldFolder.removeFile(file);
+        moved++;
+      } catch (e) {
+        errors.push(file.getName() + ': ' + e.message);
+      }
+    }
+  }
+
+  // 2. Also scan root Drive for any loose proof files referenced in Orders sheet
+  //    (identified by ProofURL = "drive:<fileId>")
+  try {
+    const orders = sheetToObjects(getSheet(SHEETS.ORDERS));
+    const rootFolder = DriveApp.getRootFolder();
+    orders.forEach(order => {
+      if (!order.ProofURL || !order.ProofURL.startsWith('drive:')) return;
+      const fileId = order.ProofURL.replace('drive:', '');
+      try {
+        const file = DriveApp.getFileById(fileId);
+        const parents = file.getParents();
+        let inTarget = false;
+        while (parents.hasNext()) {
+          if (parents.next().getId() === targetId) { inTarget = true; break; }
+        }
+        if (!inTarget) {
+          targetFolder.addFile(file);
+          // Remove from root if it lives there
+          try { rootFolder.removeFile(file); } catch (_) {}
+          moved++;
+        } else {
+          skipped++;
+        }
+      } catch (e) {
+        errors.push('Order ' + order.OrderID + ': ' + e.message);
+      }
+    });
+  } catch (e) {
+    errors.push('Orders scan error: ' + e.message);
+  }
+
+  logAudit(session.email, 'FILE_MIGRATE', 'Drive', targetId,
+    'Migrated ' + moved + ' proof file(s) to assigned folder. Skipped: ' + skipped + '. Errors: ' + errors.length);
+
+  return {
+    success: true,
+    message: moved + ' file(s) moved to the assigned folder.' +
+             (skipped ? ' ' + skipped + ' already in place.' : '') +
+             (errors.length ? ' ' + errors.length + ' error(s): ' + errors.join('; ') : ''),
+    moved, skipped, errors
+  };
 }
 
 // Serve proof of payment as base64 through GAS (avoids Drive domain restrictions)

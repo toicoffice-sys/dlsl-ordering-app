@@ -1885,7 +1885,10 @@ var App = (() => {
             <div style="font-size:13px;font-weight:600;color:#0D47A1;">📁 Proof of Payment Access</div>
             <div style="font-size:12px;color:var(--text3);">Grant all active concessionaire users view access to the Proof of Payment Drive folder.</div>
           </div>
-          <button class="btn btn-outline btn-sm" id="share-proof-btn" onclick="App.shareProofFolder()" style="border-color:#1565C0;color:#1565C0;">Share Folder with Concessionaires</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" id="migrate-proof-btn" onclick="App.migrateProofFiles()" style="border-color:#1565C0;color:#1565C0;">Migrate Existing Proofs</button>
+            <button class="btn btn-outline btn-sm" id="share-proof-btn" onclick="App.shareProofFolder()" style="border-color:#1565C0;color:#1565C0;">Share Folder with Concessionaires</button>
+          </div>
         </div>
       </div>`;
 
@@ -1919,6 +1922,18 @@ var App = (() => {
       if (res.success) toast(res.message, 'success');
       else toast(res.error || 'Repair failed.', 'error');
     } catch { toast('Repair failed.', 'error'); }
+    finally { setLoading(btn, false); }
+  }
+
+  async function migrateProofFiles() {
+    const btn = document.getElementById('migrate-proof-btn');
+    if (!confirm('This will move all existing proof of payment files into the assigned GreenBite/ProofOfPayment folder.\n\nFiles already in the target folder will be skipped.\n\nProceed?')) return;
+    setLoading(btn, true);
+    try {
+      const res = await call('migrateProofFiles', state.token);
+      if (res.success) toast(res.message, 'success');
+      else toast(res.error || 'Migration failed.', 'error');
+    } catch { toast('Migration failed.', 'error'); }
     finally { setLoading(btn, false); }
   }
 
@@ -2857,7 +2872,7 @@ var App = (() => {
     openAddUserModal, saveUser, deactivateUser, _toggleStallField,
     openEditUserModal, saveEditUser, _toggleEditStallField,
     renderConcUsers, openConcAddUserModal, saveConcStaff,
-    fixHeaders, repairOrders, shareProofFolder,
+    fixHeaders, repairOrders, migrateProofFiles, shareProofFolder,
     openAddStallModal, saveStall, approveStall, previewStallImage,
     openSupplierSearch, searchSharedSuppliers, importSupplier,
     loadReport, renderConcReports, loadConcReport,
