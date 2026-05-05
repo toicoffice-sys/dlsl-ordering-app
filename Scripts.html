@@ -1427,14 +1427,19 @@ var App = (() => {
         <div class="stat-card"><div class="stat-value">${s.readyOrders||0}</div><div class="stat-label">Ready</div></div>
         <div class="stat-card"><div class="stat-value" style="font-size:20px;">${peso(s.todayRevenue||0)}</div><div class="stat-label">Today's Revenue</div></div>`;
 
-      const active    = (ordersRes.orders||[]).filter(o => !['completed','cancelled'].includes(o.Status));
-      const completed = (ordersRes.orders||[]).filter(o =>  ['completed','cancelled'].includes(o.Status));
-      document.getElementById('active-orders').innerHTML = active.length
-        ? active.map((o, i) => concOrderCard(o, i)).join('')
-        : `<div style="text-align:center;padding:20px 0;">
-             <p style="color:var(--text3);margin-bottom:10px;">No active orders right now.</p>
-             ${completed.length ? `<button class="btn btn-outline btn-sm" onclick="App.renderStallOrders('history')">View ${completed.length} completed order${completed.length>1?'s':''} →</button>` : ''}
-           </div>`;
+      if (!ordersRes.success) {
+        document.getElementById('active-orders').innerHTML =
+          `<div class="alert alert-danger" style="font-size:13px;">⚠️ Could not load orders: ${ordersRes.error || 'Unknown error'}</div>`;
+      } else {
+        const active    = (ordersRes.orders||[]).filter(o => !['completed','cancelled'].includes(o.Status));
+        const completed = (ordersRes.orders||[]).filter(o =>  ['completed','cancelled'].includes(o.Status));
+        document.getElementById('active-orders').innerHTML = active.length
+          ? active.map((o, i) => concOrderCard(o, i)).join('')
+          : `<div style="text-align:center;padding:20px 0;">
+               <p style="color:var(--text3);margin-bottom:10px;">No active orders right now.</p>
+               ${completed.length ? `<button class="btn btn-outline btn-sm" onclick="App.renderStallOrders('history')">View ${completed.length} completed order${completed.length>1?'s':''} →</button>` : ''}
+             </div>`;
+      }
     } catch { toast('Dashboard load error.','error'); }
   }
 

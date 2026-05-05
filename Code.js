@@ -429,17 +429,33 @@ function logAudit(userEmail, action, module_, recordId, details) {
 }
 
 function getStallByEmail(email) {
-  const stalls = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
-  // Primary: stall's own email
-  const direct = stalls.find(r => (r.Email || '').toLowerCase() === email.toLowerCase());
+  const emailLc = (email || '').toLowerCase().trim();
+  const stalls  = sheetToObjects(getSheet(SHEETS.CONCESSIONAIRES));
+
+  // Primary: stall's own email matches the Concessionaires sheet
+  const direct = stalls.find(r => (r.Email || '').toLowerCase().trim() === emailLc);
   if (direct) return direct;
-  // Secondary: staff user linked to a stall via StallID in Users sheet
-  const users = sheetToObjects(getSheet(SHEETS.USERS));
-  const user  = users.find(r =>
-    (r.Email || '').toLowerCase() === email.toLowerCase() &&
-    r.Role === ROLES.CONCESSIONAIRE && r.StallID
-  );
-  if (user) return stalls.find(r => String(r.StallID) === String(user.StallID)) || null;
+
+  // Secondary: user in Users sheet with role=concessionaire and a StallID
+  // Read raw values to avoid header-mapping issues when StallID column was added later
+  const usersSheet = getSheet(SHEETS.USERS);
+  const raw        = usersSheet.getDataRange().getValues();
+  if (raw.length < 2) return null;
+
+  const hdr      = raw[0].map(h => String(h).trim());
+  const iEmail   = hdr.indexOf('Email');
+  const iRole    = hdr.indexOf('Role');
+  // StallID is column 9 per schema — fall back to index 8 if header not yet present
+  const iStallId = hdr.indexOf('StallID') !== -1 ? hdr.indexOf('StallID') : 8;
+
+  for (let i = 1; i < raw.length; i++) {
+    const rowEmail   = String(raw[i][iEmail]  || '').toLowerCase().trim();
+    const rowRole    = String(raw[i][iRole]   || '');
+    const rowStallId = String(raw[i][iStallId]|| '').trim();
+    if (rowEmail === emailLc && rowRole === ROLES.CONCESSIONAIRE && rowStallId) {
+      return stalls.find(r => String(r.StallID).trim() === rowStallId) || null;
+    }
+  }
   return null;
 }
 
