@@ -80,7 +80,10 @@ var App = (() => {
   // ---- Format ----
   function peso(n) { return '₱' + Number(n).toFixed(2); }
   function relTime(iso) {
-    const d = new Date(iso), now = Date.now(), diff = now - d;
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    const diff = Date.now() - d;
     if (diff < 60000)    return 'Just now';
     if (diff < 3600000)  return Math.floor(diff/60000) + 'm ago';
     if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
@@ -1204,7 +1207,7 @@ var App = (() => {
                   <div style="font-size:12px;color:var(--text2);">Show this at the stall</div>
                 </div>` : ''}
               <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;color:var(--text2);">
-                <span>Ordered: ${new Date(o.CreatedAt).toLocaleString('en-PH')}</span>
+                <span>Ordered: ${o.CreatedAt ? new Date(o.CreatedAt).toLocaleString('en-PH') : '—'}</span>
                 <span>Payment: ${payMethodLabel} ${payStatusBadge}</span>
               </div>
               ${items.map(i => `

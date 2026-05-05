@@ -406,7 +406,11 @@ function sheetToObjects(sheet) {
   if (data.length < 2) return [];
   const headers = data[0];
   return data.slice(1).map(row =>
-    Object.fromEntries(headers.map((h, i) => [h, row[i]]))
+    Object.fromEntries(headers.map((h, i) => {
+      const v = row[i];
+      // Convert Date objects to ISO strings so the client always gets parseable dates
+      return [h, v instanceof Date ? v.toISOString() : v];
+    }))
   );
 }
 
@@ -435,7 +439,7 @@ function getStallByEmail(email) {
     (r.Email || '').toLowerCase() === email.toLowerCase() &&
     r.Role === ROLES.CONCESSIONAIRE && r.StallID
   );
-  if (user) return stalls.find(r => r.StallID === user.StallID) || null;
+  if (user) return stalls.find(r => String(r.StallID) === String(user.StallID)) || null;
   return null;
 }
 

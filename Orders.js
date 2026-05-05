@@ -24,7 +24,7 @@ function placeOrder(token, orderData) {
 
   // Validate stall
   const concessionaires = getConcessionaires(true);
-  const stall = concessionaires.find(c => c.StallID === stallId);
+  const stall = concessionaires.find(c => String(c.StallID) === String(stallId));
   if (!stall) return { success: false, error: 'Stall not found or not accepting orders.' };
   if (stall.Status === 'offline') return { success: false, error: `${stall.StallName} is currently offline and not accepting orders.` };
 
@@ -96,6 +96,8 @@ function placeOrder(token, orderData) {
     timestamp
   ]);
 
+  logAudit(session.email, 'CREATE', 'Orders', orderId, `Stall: ${stall.StallName}, Total: ${total}, Payment: ${paymentMethod}`);
+
   // Notify concessionaire + customer
   notifyNewOrder(stall.Email, session.userData.name, orderId, pickupCode, validatedItems, total, paymentMethod);
   notifyCustomerOrderPlaced(session.email, session.userData.name, orderId, pickupCode, stall.StallName, validatedItems, total);
@@ -151,7 +153,7 @@ function getStallOrders(token, filter) {
 
   const rows = sheetToObjects(getSheet(SHEETS.ORDERS));
   let orders = rows
-    .filter(r => stall ? r.StallID === stall.StallID : true)
+    .filter(r => stall ? String(r.StallID) === String(stall.StallID) : true)
     .map(r => ({ ...r, Items: safeParseJSON(r.Items) }))
     .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
 
@@ -189,6 +191,7 @@ function updateOrderStatus(token, orderId, status, message) {
     const stallName     = rows[i][headers.indexOf('StallName')];
     const pickupCode    = rows[i][headers.indexOf('PickupCode')];
 
+    logAudit(session.email, 'UPDATE', 'Orders', orderId, `Status → ${status}${message ? ': ' + message : ''}`);
     notifyOrderStatusUpdate(customerEmail, customerName, orderId, stallName, status, pickupCode, message);
 
     return { success: true };
@@ -223,6 +226,8 @@ function confirmPayment(token, orderId) {
     sheet.getRange(i + 1, headers.indexOf('PaymentStatus') + 1).setValue('paid');
     sheet.getRange(i + 1, headers.indexOf('Status') + 1).setValue(ORDER_STATUS.CONFIRMED);
     sheet.getRange(i + 1, headers.indexOf('UpdatedAt') + 1).setValue(now());
+
+    logAudit(session.email, 'UPDATE', 'Orders', orderId, 'Payment verified → Status: confirmed');
 
     // Notify customer: payment verified + order confirmed
     notifyPaymentVerified(customerEmail, customerName, orderId, stallName);
@@ -272,6 +277,8 @@ function rejectPayment(token, orderId, reason) {
     const items = safeParseJSON(rows[i][headers.indexOf('Items')]);
     restoreStock(items);
 
+    logAudit(session.email, 'UPDATE', 'Orders', orderId, `Payment rejected. Reason: ${reason}`);
+
     // Notify customer
     notifyPaymentRejected(customerEmail, customerName, orderId, stallName, reason);
 
@@ -309,6 +316,8 @@ function cancelOrder(token, orderId) {
     // Restore stock
     const items = safeParseJSON(rows[i][headers.indexOf('Items')]);
     restoreStock(items);
+
+    logAudit(session.email, 'DELETE', 'Orders', orderId, 'Order cancelled by customer');
 
     return { success: true };
   }
