@@ -1836,8 +1836,6 @@ var App = (() => {
       ]);
       const s = statsRes.stats || {};
       document.getElementById('admin-stats').innerHTML = `
-        <div class="stat-card"><div class="stat-value">${s.totalOrdersToday||0}</div><div class="stat-label">Orders Today</div></div>
-        <div class="stat-card"><div class="stat-value">${peso(s.todayRevenue||0)}</div><div class="stat-label" style="font-size:11px;">Today's Revenue</div></div>
         <div class="stat-card"><div class="stat-value">${s.totalUsers||0}</div><div class="stat-label">Total Users</div></div>
         <div class="stat-card"><div class="stat-value">${s.totalStalls||0}</div><div class="stat-label">Active Stalls</div></div>
         <div class="stat-card"><div class="stat-value" style="color:${s.pendingApprovals?'var(--warn)':'var(--g800)'};">${s.pendingApprovals||0}</div><div class="stat-label">Pending Approvals</div></div>`;
