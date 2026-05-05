@@ -75,26 +75,26 @@ function placeOrder(token, orderData) {
     ? savePaymentProof(proofData, proofMimeType, `proof_${orderId}.${(proofMimeType||'image/jpeg').split('/')[1]}`)
     : '';
 
-  getSheet(SHEETS.ORDERS).appendRow([
-    orderId,
-    session.email,
-    session.userData.name,
-    stallId,
-    stall.StallName,
-    JSON.stringify(validatedItems),
-    subtotal,
-    SERVICE_FEE,
-    total,
-    paymentMethod,
-    paymentRef || '',
-    proofUrl,
-    payStatus,
-    ORDER_STATUS.PENDING,
-    pickupCode,
-    (notes || '').trim(),
-    timestamp,
-    timestamp
-  ]);
+  appendNamedRow(getSheet(SHEETS.ORDERS), {
+    OrderID:       orderId,
+    CustomerEmail: session.email,
+    CustomerName:  session.userData.name,
+    StallID:       stallId,
+    StallName:     stall.StallName,
+    Items:         JSON.stringify(validatedItems),
+    Subtotal:      subtotal,
+    ServiceFee:    SERVICE_FEE,
+    Total:         total,
+    PaymentMethod: paymentMethod,
+    PaymentRef:    paymentRef || '',
+    ProofURL:      proofUrl,
+    PaymentStatus: payStatus,
+    Status:        ORDER_STATUS.PENDING,
+    PickupCode:    pickupCode,
+    Notes:         (notes || '').trim(),
+    CreatedAt:     timestamp,
+    UpdatedAt:     timestamp
+  });
 
   logAudit(session.email, 'CREATE', 'Orders', orderId, `Stall: ${stall.StallName}, Total: ${total}, Payment: ${paymentMethod}`);
 

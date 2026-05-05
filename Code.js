@@ -148,6 +148,9 @@ function requestAccess(email) {
   email = (email || '').toLowerCase().trim();
   if (!email) return { success: false, error: 'Email is required.' };
 
+  if (!SPREADSHEET_ID) return { success: false, error: 'App not configured. Run setupScriptProperties() in the Apps Script editor.' };
+
+  try {
   const usersSheet = getSheet(SHEETS.USERS);
   const rows = usersSheet.getDataRange().getValues();
   let user = null;
@@ -183,6 +186,9 @@ function requestAccess(email) {
 
   sendOTPEmail(user.name, email, otp);
   return { success: true, name: user.name };
+  } catch(e) {
+    return { success: false, error: 'Server error: ' + e.message };
+  }
 }
 
 function verifyOTP(email, code) {
@@ -297,6 +303,67 @@ function validateSession(token) {
 }
 
 // ------------------------------------------------------------
+// Diagnostics — run from Apps Script editor to troubleshoot
+// ------------------------------------------------------------
+
+/**
+ * Run this from Extensions > Apps Script editor to diagnose setup issues.
+ * Select runDiagnostics from the function dropdown and click Run.
+ * Check the Execution Log for results.
+ */
+function runDiagnostics() {
+  const props = PropertiesService.getScriptProperties();
+  const ssId  = props.getProperty('SPREADSHEET_ID');
+  Logger.log('=== GreenBite Setup Diagnostics ===');
+  Logger.log('SPREADSHEET_ID set: ' + (ssId ? 'YES → ' + ssId : 'NO ← Run setupScriptProperties() first!'));
+
+  if (!ssId) {
+    Logger.log('❌ SPREADSHEET_ID missing. Run setupScriptProperties() then re-run this.');
+    return;
+  }
+
+  try {
+    const ss = SpreadsheetApp.openById(ssId);
+    Logger.log('Spreadsheet: ' + ss.getName() + ' (' + ssId + ')');
+
+    const usersSheet = ss.getSheetByName('Users');
+    if (!usersSheet) { Logger.log('❌ Users sheet not found. Run initializeApp() first.'); return; }
+
+    const rows = usersSheet.getDataRange().getValues();
+    Logger.log('Users sheet rows (incl. header): ' + rows.length);
+    Logger.log('Header: ' + rows[0].join(' | '));
+    Logger.log('--- Users ---');
+    for (let i = 1; i < rows.length; i++) {
+      Logger.log(`  [${i}] ${rows[i][1]} | ${rows[i][2]} | role=${rows[i][3]} | status=${rows[i][6]}`);
+    }
+    Logger.log('✅ Diagnostics complete.');
+  } catch(e) {
+    Logger.log('❌ Error opening spreadsheet: ' + e.message);
+  }
+}
+
+/**
+ * Check a specific email's login eligibility.
+ * Usage: change the email below and run from the editor.
+ */
+function checkEmail() {
+  const email = 'paste-email-here@dlsl.edu.ph'; // ← change this
+  const ssId  = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (!ssId) { Logger.log('❌ SPREADSHEET_ID not set.'); return; }
+  const rows = SpreadsheetApp.openById(ssId).getSheetByName('Users').getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if ((rows[i][2]||'').toLowerCase() === email.toLowerCase().trim()) {
+      Logger.log('✅ Found: ' + JSON.stringify({
+        name: rows[i][1], email: rows[i][2], role: rows[i][3], status: rows[i][6]
+      }));
+      if (rows[i][6] !== 'active') Logger.log('⚠️  Status is NOT active → login will fail.');
+      return;
+    }
+  }
+  Logger.log('❌ Email not found in Users sheet: ' + email);
+}
+
+// ------------------------------------------------------------
 // Bootstrap / init
 // ------------------------------------------------------------
 
@@ -332,6 +399,16 @@ function getBootData(token) {
 // ------------------------------------------------------------
 // Shared helpers
 // ------------------------------------------------------------
+
+/**
+ * Appends a row to a sheet by column name — order of columns in the sheet doesn't matter.
+ * Missing columns in `data` are written as empty string.
+ */
+function appendNamedRow(sheet, data) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const row = headers.map(h => data.hasOwnProperty(h) ? data[h] : '');
+  sheet.appendRow(row);
+}
 
 function getSheet(name) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -373,6 +450,78 @@ function fixSheetHeaders(token) {
     patchSheetHeaders(sheet, name);
   });
   return { success: true, message: 'Sheet headers patched.' };
+}
+
+/**
+ * One-time repair for Orders sheet column misalignment.
+ *
+ * Background: patchSheetHeaders() previously appended a duplicate 'UpdatedAt' column
+ * instead of inserting the missing 'ProofURL' column at the correct position.
+ * Orders placed after the ProofURL code was deployed have columns 11-17 in the
+ * CORRECT positions relative to the expected header — but the header labels were wrong.
+ * Orders placed before the ProofURL code have columns shifted by 1 starting at position 11.
+ *
+ * Detection heuristic:
+ *   - New-format rows: position 13 = ORDER_STATUS.PENDING ("pending") — written by placeOrder
+ *   - Old-format rows: position 13 = pickupCode (5-char random, never "pending")
+ *
+ * Run once from the Admin panel after deploying this fix.
+ */
+function repairOrdersSheet(token) {
+  const session = validateSession(token);
+  if (!session || session.role !== ROLES.ADMIN) return { success: false, error: 'Admin only.' };
+
+  const EXPECTED = ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items',
+                    'Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','ProofURL',
+                    'PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'];
+
+  const sheet   = getSheet(SHEETS.ORDERS);
+  const allData = sheet.getDataRange().getValues();
+  if (allData.length <= 1) return { success: true, message: 'No order rows to repair.' };
+
+  // Check if header is already correct
+  const hdr = allData[0];
+  const alreadyOk = EXPECTED.every((h, i) => hdr[i] === h) && hdr.length === EXPECTED.length;
+  if (alreadyOk) return { success: true, message: 'Orders sheet is already in the correct format.' };
+
+  let newFormat = 0, oldFormat = 0;
+  const newData = [EXPECTED];
+
+  for (let r = 1; r < allData.length; r++) {
+    const row = allData[r];
+    if (!row[0]) continue; // skip blank rows
+
+    // Heuristic: new-format rows have ORDER_STATUS.PENDING at position 13
+    // (placeOrder wrote the order status constant there before the header was fixed)
+    // Old-format rows have a 5-char pickupCode at position 13 — never "pending"
+    const isNewFmt = String(row[13] || '') === ORDER_STATUS.PENDING;
+
+    if (isNewFmt) {
+      // Data positions already match the expected header — just copy as-is
+      newData.push(EXPECTED.map((_, i) => (i < row.length ? row[i] : '')));
+      newFormat++;
+    } else {
+      // Old format: no ProofURL (insert '' at position 11, shift 11-17 right by 1)
+      const newRow = EXPECTED.map((_, i) => {
+        if (i <= 10)  return row[i];          // cols 0-10 unchanged
+        if (i === 11) return '';              // ProofURL (old orders had none)
+        return i - 1 < row.length ? row[i - 1] : ''; // shift 12-17 ← from 11-16
+      });
+      newData.push(newRow);
+      oldFormat++;
+    }
+  }
+
+  // Rewrite the sheet
+  sheet.clearContents();
+  sheet.getRange(1, 1, newData.length, EXPECTED.length).setValues(newData);
+  sheet.getRange(1, 1, 1, EXPECTED.length)
+    .setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold');
+
+  logAudit(session.email, 'UPDATE', 'Orders', '',
+    `Sheet repaired: ${newFormat} new-format rows, ${oldFormat} old-format rows fixed.`);
+  return { success: true,
+           message: `Done! ${newFormat} new-format + ${oldFormat} old-format rows repaired.` };
 }
 
 function initSheetHeaders(sheet, name) {
