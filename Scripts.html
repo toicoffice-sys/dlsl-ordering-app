@@ -21,6 +21,16 @@ var App = (() => {
   function saveToken(t) { localStorage.setItem('dlsl_ordering_token', t); }
   function clearToken() { localStorage.removeItem('dlsl_ordering_token'); }
 
+  // ---- Persist last view (session restore) ----
+  const _NO_RESTORE = new Set(['login','order-detail','stall','cart']);
+  function saveLastView(view) {
+    if (!_NO_RESTORE.has(view)) {
+      try { localStorage.setItem('dlsl_last_view', view); } catch(e) {}
+    }
+  }
+  function loadLastView()   { return localStorage.getItem('dlsl_last_view') || 'home'; }
+  function clearLastView()  { localStorage.removeItem('dlsl_last_view'); }
+
   // ---- Persist cart ----
   function saveCart()  { try { localStorage.setItem('dlsl_cart', JSON.stringify(state.cart)); } catch(e) {} }
   function loadCart()  { try { const c = localStorage.getItem('dlsl_cart'); return c ? JSON.parse(c) : []; } catch(e) { return []; } }
@@ -152,7 +162,8 @@ var App = (() => {
     if (favBtn) favBtn.style.display = isCustomer ? '' : 'none';
     updateCartBadge();
     setupNavForRole(res.role);
-    navigateTo('home');
+    const restoredView = loadLastView();
+    navigateTo(restoredView);
   }
 
   // Step 1 — show email step, hide OTP step
@@ -262,6 +273,7 @@ var App = (() => {
   async function doLogout() {
     if (state.token) await call('logout', state.token).catch(()=>{});
     localStorage.removeItem('dlsl_cart');
+    clearLastView();
     state = { token:null, user:null, role:null, stallData:null, cart:[], favorites:[], view:'login', subview:null, concessionaires:[], products:[], orders:[], currentStall:null, selectedOrder:null, pendingEmail:null, pendingName:null };
     clearToken();
     document.getElementById('main-nav').style.display = 'none';
@@ -375,6 +387,7 @@ var App = (() => {
 
   function navigateTo(view, params) {
     state.view = view;
+    saveLastView(view);
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.nav === view));
     document.querySelectorAll('.sidebar-nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === view));
 
