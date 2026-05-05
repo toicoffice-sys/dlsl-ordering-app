@@ -1819,7 +1819,6 @@ var App = (() => {
         <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">Admin Dashboard</h2>
         <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">RESGO Overview</p>
         <div class="stats-grid" id="admin-stats"><div class="loader"><div class="spinner"></div></div></div>
-        <div style="margin-top:20px;" id="pending-section"></div>
         <div style="margin-top:20px;padding:12px 16px;background:#F1F8E9;border:1px solid #C5E1A5;border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div>
             <div style="font-size:13px;font-weight:600;color:#1B5E20;">🔧 Sheet Maintenance</div>
@@ -1830,28 +1829,12 @@ var App = (() => {
       </div>`;
 
     try {
-      const [statsRes, pendingRes] = await Promise.all([
-        call('getDashboardStats', state.token),
-        call('getPendingProducts', state.token)
-      ]);
-      const s = statsRes.stats || {};
+      const res = await call('getDashboardStats', state.token);
+      const s = res.stats || {};
       document.getElementById('admin-stats').innerHTML = `
         <div class="stat-card"><div class="stat-value">${s.totalUsers||0}</div><div class="stat-label">Total Users</div></div>
         <div class="stat-card"><div class="stat-value">${s.totalStalls||0}</div><div class="stat-label">Active Stalls</div></div>
         <div class="stat-card"><div class="stat-value" style="color:${s.pendingApprovals?'var(--warn)':'var(--g800)'};">${s.pendingApprovals||0}</div><div class="stat-label">Pending Approvals</div></div>`;
-
-      const pending = pendingRes.products || [];
-      document.getElementById('pending-section').innerHTML = pending.length ? `
-        <h3 style="font-size:15px;font-weight:700;margin-bottom:10px;">⏳ Pending Menu Approvals (${pending.length})</h3>
-        ${pending.map(p => `
-          <div class="order-item" style="margin-bottom:10px;">
-            <div class="order-header"><strong>${p.Name}</strong><span style="color:var(--text3);font-size:13px;">${p.StallName}</span></div>
-            <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">${p.Category} &nbsp;|&nbsp; ${peso(p.Price)}</div>
-            <div class="td-actions">
-              <button class="btn btn-primary btn-sm" onclick="App.approveProduct('${p.ProductID}',true)">✓ Approve</button>
-              <button class="btn btn-danger btn-sm" onclick="App.approveProduct('${p.ProductID}',false)">✕ Reject</button>
-            </div>
-          </div>`).join('')}` : '';
     } catch { toast('Dashboard error.','error'); }
   }
 
