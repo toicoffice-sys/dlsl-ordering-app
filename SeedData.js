@@ -11,9 +11,11 @@
  */
 function setupScriptProperties() {
   const props = PropertiesService.getScriptProperties();
-  props.setProperty('SPREADSHEET_ID', '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI');
+  props.setProperty('SPREADSHEET_ID',  '1NzOjJQfDVdJLhy23oLB_upkLlxCuhiovHZPlscXfjDI');
+  props.setProperty('PROOFS_FOLDER_ID','1mdH9Pa-k1OZB5ecRyF5bFvOrRrwxeJpM');
   Logger.log('✅ Script Properties set successfully.');
-  Logger.log('SPREADSHEET_ID = ' + props.getProperty('SPREADSHEET_ID'));
+  Logger.log('SPREADSHEET_ID   = ' + props.getProperty('SPREADSHEET_ID'));
+  Logger.log('PROOFS_FOLDER_ID = ' + props.getProperty('PROOFS_FOLDER_ID'));
 }
 
 function seedSampleData() {

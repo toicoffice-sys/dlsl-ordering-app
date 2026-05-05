@@ -1,22 +1,29 @@
 // ============================================================
 // DLSL Ordering App (GreenBite) — Google Apps Script
-// Version: 1.0.0
-// Last Updated: 2026-05-04
+// Version: 1.1.0
+// Last Updated: 2026-05-05
 // Developer: A2OM · DLSL TOIC
 // Description: Campus food & merchandise ordering app for DLSL
 // Changelog:
 //   v1.0.0 - 2026-05-04 - Move SPREADSHEET_ID to PropertiesService (security fix)
+//   v1.1.0 - 2026-05-05 - Save proofs to fixed Drive folder; add shareProofFolder admin function
 // ============================================================
 
 const SPREADSHEET_ID        = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
 const IMAGES_FOLDER_NAME    = 'DLSL Ordering App — Images';
-const PROOFS_FOLDER_NAME    = 'DLSL Ordering App — Payment Proofs';
+
+function _getProofsFolder() {
+  const folderId = PropertiesService.getScriptProperties().getProperty('PROOFS_FOLDER_ID');
+  if (folderId) return DriveApp.getFolderById(folderId);
+  // Fallback: create/find by name (legacy)
+  const it = DriveApp.getFoldersByName('DLSL Ordering App — Payment Proofs');
+  return it.hasNext() ? it.next() : DriveApp.createFolder('DLSL Ordering App — Payment Proofs');
+}
 
 function savePaymentProof(base64Data, mimeType, filename) {
   if (!base64Data) return '';
   try {
-    const folders = DriveApp.getFoldersByName(PROOFS_FOLDER_NAME);
-    const folder  = folders.hasNext() ? folders.next() : DriveApp.createFolder(PROOFS_FOLDER_NAME);
+    const folder  = _getProofsFolder();
     const decoded = Utilities.base64Decode(base64Data);
     const blob    = Utilities.newBlob(decoded, mimeType || 'image/jpeg', filename || 'proof.jpg');
     const file    = folder.createFile(blob);
@@ -24,6 +31,48 @@ function savePaymentProof(base64Data, mimeType, filename) {
     // Store just the file ID so we can serve it via getPaymentProof()
     return 'drive:' + file.getId();
   } catch (e) { return ''; }
+}
+
+// Share the proofs folder as Viewer with all active concessionaire admin users
+function shareProofFolder(token) {
+  const session = validateSession(token);
+  if (!session) return { success: false, error: 'Session expired.' };
+  if (session.role !== ROLES.ADMIN) return { success: false, error: 'Admin only.' };
+
+  try {
+    const folder    = _getProofsFolder();
+    const usersSheet = getSheet(SHEETS.USERS);
+    const users     = sheetToObjects(usersSheet);
+    const concEmails = users
+      .filter(u => u.Role === ROLES.CONCESSIONAIRE && (u.Status || '').toLowerCase() === 'active')
+      .map(u => (u.Email || '').toLowerCase().trim())
+      .filter(Boolean);
+
+    if (!concEmails.length) return { success: false, error: 'No active concessionaire users found.' };
+
+    const shared = [];
+    const failed = [];
+    concEmails.forEach(email => {
+      try {
+        folder.addViewer(email);
+        shared.push(email);
+      } catch (err) {
+        failed.push(email);
+      }
+    });
+
+    logAudit(session.email, 'FOLDER_SHARE', 'Drive', folder.getId(),
+      'Shared proof folder with ' + shared.length + ' concessionaire(s). Failed: ' + failed.length);
+
+    return {
+      success: true,
+      message: 'Folder shared with ' + shared.length + ' concessionaire(s).' +
+               (failed.length ? ' ' + failed.length + ' failed: ' + failed.join(', ') : ''),
+      shared, failed
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 }
 
 // Serve proof of payment as base64 through GAS (avoids Drive domain restrictions)
