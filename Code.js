@@ -151,41 +151,40 @@ function requestAccess(email) {
   if (!SPREADSHEET_ID) return { success: false, error: 'App not configured. Run setupScriptProperties() in the Apps Script editor.' };
 
   try {
-  const usersSheet = getSheet(SHEETS.USERS);
-  const rows = usersSheet.getDataRange().getValues();
-  let user = null;
+    const usersSheet = getSheet(SHEETS.USERS);
+    const rows = usersSheet.getDataRange().getValues();
+    let user = null;
 
-  for (let i = 1; i < rows.length; i++) {
-    if ((rows[i][2] || '').toLowerCase() === email) {
-      user = { id: rows[i][0], name: rows[i][1], email: rows[i][2], role: rows[i][3], status: rows[i][6] };
-      break;
+    for (let i = 1; i < rows.length; i++) {
+      if ((rows[i][2] || '').toLowerCase() === email) {
+        user = { id: rows[i][0], name: rows[i][1], email: rows[i][2], role: rows[i][3], status: rows[i][6] };
+        break;
+      }
     }
-  }
 
-  if (!user) return { success: false, error: 'Email not registered. Contact RESGO to create your account.' };
-  if (user.status !== 'active') return { success: false, error: 'Account is inactive. Please contact RESGO.' };
+    if (!user) return { success: false, error: 'Email not registered. Contact RESGO to create your account.' };
+    if (user.status !== 'active') return { success: false, error: 'Account is inactive. Please contact RESGO.' };
 
-  // Rate-limit: 60 s between sends
-  const otpSheet = getSheet(SHEETS.OTPS);
-  const otpRows = otpSheet.getDataRange().getValues();
-  const now = new Date();
-
-  for (let i = 1; i < otpRows.length; i++) {
-    if ((otpRows[i][0] || '').toLowerCase() === email) {
-      const sentAt = new Date(otpRows[i][4] || 0);
-      const diff = (now - sentAt) / 1000;
-      if (diff < 60) return { success: false, error: `Wait ${Math.ceil(60 - diff)}s before requesting again.` };
-      otpSheet.deleteRow(i + 1);
-      break;
+    // Rate-limit: 60 s between sends — checked via PropertiesService (no sheet scan)
+    const propKey  = 'otp_' + email;
+    const existing = PropertiesService.getScriptProperties().getProperty(propKey);
+    if (existing) {
+      try {
+        const d    = JSON.parse(existing);
+        const diff = (Date.now() - new Date(d.sentAt).getTime()) / 1000;
+        if (diff < 60) return { success: false, error: `Wait ${Math.ceil(60 - diff)}s before requesting again.` };
+      } catch(e) { /* corrupted entry — overwrite below */ }
     }
-  }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const expires = new Date(now.getTime() + 10 * 60 * 1000);
-  otpSheet.appendRow([email, otp, expires.toISOString(), 0, now.toISOString()]);
+    const otp     = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const sentAt  = new Date().toISOString();
+    PropertiesService.getScriptProperties().setProperty(
+      propKey, JSON.stringify({ code: otp, expires, attempts: 0, sentAt })
+    );
 
-  sendOTPEmail(user.name, email, otp);
-  return { success: true, name: user.name };
+    sendOTPEmail(user.name, email, otp);
+    return { success: true, name: user.name };
   } catch(e) {
     return { success: false, error: 'Server error: ' + e.message };
   }
@@ -195,66 +194,63 @@ function verifyOTP(email, code) {
   email = (email || '').toLowerCase().trim();
   code  = (code  || '').trim();
 
-  const otpSheet = getSheet(SHEETS.OTPS);
-  const otpRows  = otpSheet.getDataRange().getValues();
-  const now      = new Date();
+  // OTP stored in PropertiesService — O(1) lookup, no sheet scan
+  const propKey = 'otp_' + email;
+  const raw     = PropertiesService.getScriptProperties().getProperty(propKey);
+  if (!raw) return { success: false, error: 'OTP not found. Please request a new one.' };
 
-  for (let i = 1; i < otpRows.length; i++) {
-    if ((otpRows[i][0] || '').toLowerCase() !== email) continue;
+  let otpData;
+  try { otpData = JSON.parse(raw); }
+  catch(e) { return { success: false, error: 'OTP data corrupted. Please request a new one.' }; }
 
-    const storedOTP = otpRows[i][1].toString();
-    const expires   = new Date(otpRows[i][2]);
-    const attempts  = parseInt(otpRows[i][3]) || 0;
-
-    if (attempts >= 5) {
-      otpSheet.deleteRow(i + 1);
-      return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
-    }
-    if (now > expires) {
-      otpSheet.deleteRow(i + 1);
-      return { success: false, error: 'OTP expired. Please request a new one.' };
-    }
-    if (storedOTP !== code) {
-      otpSheet.getRange(i + 1, 4).setValue(attempts + 1);
-      return { success: false, error: `Invalid OTP. ${4 - attempts} attempt(s) left.` };
-    }
-
-    otpSheet.deleteRow(i + 1);
-
-    const usersSheet = getSheet(SHEETS.USERS);
-    const rows = usersSheet.getDataRange().getValues();
-    let userData = null;
-
-    for (let j = 1; j < rows.length; j++) {
-      if ((rows[j][2] || '').toLowerCase() === email) {
-        userData = { id: rows[j][0], name: rows[j][1], email: rows[j][2],
-                     role: rows[j][3], idNumber: rows[j][4], phone: rows[j][5] };
-        break;
-      }
-    }
-    if (!userData) return { success: false, error: 'User not found.' };
-
-    const token = createSession(email, userData.role, userData);
-
-    // Attach stall data for concessionaires
-    let stallData = null;
-    if (userData.role === ROLES.CONCESSIONAIRE) {
-      stallData = getStallByEmail(email);
-    }
-
-    logAudit(email, 'LOGIN', 'Auth', userData.id, `Role: ${userData.role}`);
-
-    return {
-      success: true,
-      token,
-      user: userData,
-      stallData,
-      concessionaires: getConcessionaires(true),
-      announcements:   getAnnouncements()
-    };
+  if (otpData.attempts >= 5) {
+    PropertiesService.getScriptProperties().deleteProperty(propKey);
+    return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
+  }
+  if (Date.now() > new Date(otpData.expires).getTime()) {
+    PropertiesService.getScriptProperties().deleteProperty(propKey);
+    return { success: false, error: 'OTP expired. Please request a new one.' };
+  }
+  if (otpData.code !== code) {
+    otpData.attempts++;
+    PropertiesService.getScriptProperties().setProperty(propKey, JSON.stringify(otpData));
+    return { success: false, error: `Invalid OTP. ${5 - otpData.attempts} attempt(s) left.` };
   }
 
-  return { success: false, error: 'OTP not found. Please request a new one.' };
+  // OTP correct — single-use, delete immediately
+  PropertiesService.getScriptProperties().deleteProperty(propKey);
+
+  // Look up user
+  const usersSheet = getSheet(SHEETS.USERS);
+  const rows = usersSheet.getDataRange().getValues();
+  let userData = null;
+  for (let j = 1; j < rows.length; j++) {
+    if ((rows[j][2] || '').toLowerCase() === email) {
+      userData = { id: rows[j][0], name: rows[j][1], email: rows[j][2],
+                   role: rows[j][3], idNumber: rows[j][4], phone: rows[j][5] };
+      break;
+    }
+  }
+  if (!userData) return { success: false, error: 'User not found.' };
+
+  const token = createSession(email, userData.role, userData);
+
+  // Attach stall data for concessionaires
+  let stallData = null;
+  if (userData.role === ROLES.CONCESSIONAIRE) {
+    stallData = getStallByEmail(email);
+  }
+
+  logAudit(email, 'LOGIN', 'Auth', userData.id, `Role: ${userData.role}`);
+
+  return {
+    success: true,
+    token,
+    user: userData,
+    stallData,
+    concessionaires: getConcessionaires(true),
+    announcements:   getAnnouncements()
+  };
 }
 
 function resendOTP(email) {
@@ -262,18 +258,16 @@ function resendOTP(email) {
 }
 
 function logout(token) {
-  if (!token) return { success: false };
-  const sheet = getSheet(SHEETS.SESSIONS);
-  const rows  = sheet.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === token) {
-      const email = rows[i][1];
-      sheet.deleteRow(i + 1);
-      logAudit(email, 'LOGOUT', 'Auth', '', '');
-      return { success: true };
+  if (!token) return { success: true };
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty('sess_' + token);
+    if (raw) {
+      const sess = JSON.parse(raw);
+      PropertiesService.getScriptProperties().deleteProperty('sess_' + token);
+      logAudit(sess.email, 'LOGOUT', 'Auth', '', '');
     }
-  }
-  return { success: false };
+  } catch(e) {}
+  return { success: true };
 }
 
 // ------------------------------------------------------------
@@ -282,24 +276,26 @@ function logout(token) {
 
 function createSession(email, role, userData) {
   const token   = Utilities.getUuid();
-  const expires = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 h
-  getSheet(SHEETS.SESSIONS).appendRow([token, email, role, JSON.stringify(userData), expires.toISOString()]);
+  const expires = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 h
+  PropertiesService.getScriptProperties().setProperty(
+    'sess_' + token,
+    JSON.stringify({ email, role, userData, expires })
+  );
   return token;
 }
 
 function validateSession(token) {
   if (!token) return null;
-  const sheet = getSheet(SHEETS.SESSIONS);
-  const rows  = sheet.getDataRange().getValues();
-  const now   = new Date();
-
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] !== token) continue;
-    const expires = new Date(rows[i][4]);
-    if (expires <= now) { sheet.deleteRow(i + 1); return null; }
-    return { email: rows[i][1], role: rows[i][2], userData: JSON.parse(rows[i][3]) };
-  }
-  return null;
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty('sess_' + token);
+    if (!raw) return null;
+    const sess = JSON.parse(raw);
+    if (Date.now() > new Date(sess.expires).getTime()) {
+      PropertiesService.getScriptProperties().deleteProperty('sess_' + token);
+      return null;
+    }
+    return { email: sess.email, role: sess.role, userData: sess.userData };
+  } catch(e) { return null; }
 }
 
 // ------------------------------------------------------------
@@ -746,14 +742,24 @@ function cacheBust(...keys) {
 // ------------------------------------------------------------
 
 function cleanupExpiredRows() {
-  const now = new Date();
-  [{ name: SHEETS.SESSIONS, col: 4 }, { name: SHEETS.OTPS, col: 2 }].forEach(({ name, col }) => {
-    const sheet = getSheet(name);
-    const rows  = sheet.getDataRange().getValues();
-    for (let i = rows.length - 1; i >= 1; i--) {
-      if (new Date(rows[i][col]) <= now) sheet.deleteRow(i + 1);
+  const now   = Date.now();
+  const props = PropertiesService.getScriptProperties().getProperties();
+  let removed = 0;
+  Object.keys(props).forEach(k => {
+    if (!k.startsWith('sess_') && !k.startsWith('otp_')) return;
+    try {
+      const d       = JSON.parse(props[k]);
+      const expires = new Date(d.expires || 0).getTime();
+      if (now > expires) {
+        PropertiesService.getScriptProperties().deleteProperty(k);
+        removed++;
+      }
+    } catch(e) {
+      PropertiesService.getScriptProperties().deleteProperty(k); // corrupt entry
+      removed++;
     }
   });
+  if (removed > 0) console.log('cleanupExpiredRows: removed ' + removed + ' expired entries.');
 }
 
 function setupCleanupTrigger() {

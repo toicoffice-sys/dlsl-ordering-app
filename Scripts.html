@@ -250,13 +250,25 @@ var App = (() => {
     finally { if(btn){btn.disabled=false; btn.textContent='Generate OTP →';} }
   }
 
+  var _otpInFlight = false;
   async function submitOTP(email) {
+    if (_otpInFlight) return; // prevent double-submit during a slow GAS response
     var code = [0,1,2,3,4,5].map(function(i){ var el=document.getElementById('otp-'+i); return el?el.value:''; }).join('');
     if (code.length < 6) { toast('Enter all 6 digits.','error'); return; }
     var btn = document.getElementById('otp-submit-btn');
     if (btn) { btn.disabled=true; btn.textContent='Verifying…'; }
+    _otpInFlight = true;
+    var timeout = setTimeout(function() {
+      if (_otpInFlight) {
+        _otpInFlight = false;
+        if (btn) { btn.disabled=false; btn.textContent='Verify & Sign In'; }
+        toast('Request is taking longer than expected — please try again.', 'error');
+      }
+    }, 45000);
     try {
       var res = await call('verifyOTP', email, code);
+      clearTimeout(timeout);
+      if (!_otpInFlight) return; // timed out already, ignore late response
       if (res.success) {
         saveToken(res.token);
         state.token = res.token;
@@ -264,8 +276,8 @@ var App = (() => {
       } else {
         renderLoginStep2(email, '', res.error);
       }
-    } catch(e) { toast('Connection error. Please try again.','error'); }
-    finally { if(btn){btn.disabled=false; btn.textContent='Verify & Sign In';} }
+    } catch(e) { clearTimeout(timeout); toast('Connection error. Please try again.','error'); }
+    finally { _otpInFlight = false; if(btn){btn.disabled=false; btn.textContent='Verify & Sign In';} }
   }
 
   async function resendOTP(email, name) {
