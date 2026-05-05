@@ -643,18 +643,49 @@ function getSalesReportRaw(startDate, endDate, stallId) {
 
 // ------------------------------------------------------------
 // DLSP Shared Supplier Database — read-only integration
-// Reads the Suppliers sheet from the DLSP database spreadsheet
-// using the SUPPLIER_DB_ID Script Property.
+//
+// Primary path:  UrlFetchApp → DLSP service API (getServiceSuppliers)
+//                Requires Script Properties:
+//                  SUPPLIER_DB_URL  — deployed web app URL of DLSP app
+//                  SUPPLIER_API_KEY — shared secret matching DLSP SERVICE_API_KEY
+//
+// Fallback path: SpreadsheetApp.openById (same-account only)
+//                Requires Script Property:
+//                  SUPPLIER_DB_ID   — DLSP spreadsheet ID
 // ------------------------------------------------------------
 
 function getSharedSuppliers(token, query) {
   const g = requireAdmin(token);
   if (!g.ok) return { success: false, error: g.error };
 
-  const dbId = PropertiesService.getScriptProperties().getProperty('SUPPLIER_DB_ID');
+  const props  = PropertiesService.getScriptProperties();
+  const dbUrl  = props.getProperty('SUPPLIER_DB_URL');
+  const apiKey = props.getProperty('SUPPLIER_API_KEY');
+  const dbId   = props.getProperty('SUPPLIER_DB_ID');
+
+  // ── Primary: service API call ──────────────────────────────
+  if (dbUrl && apiKey) {
+    try {
+      const payload = JSON.stringify({ apiKey, query: query || '', schoolCode: 'DLSL' });
+      const resp    = UrlFetchApp.fetch(dbUrl, {
+        method:      'post',
+        contentType: 'application/json',
+        payload,
+        muteHttpExceptions: true,
+      });
+      const result = JSON.parse(resp.getContentText());
+      if (result.success) return result;
+      // fall through to spreadsheet fallback on API error
+      console.warn('getSharedSuppliers: API returned error — ' + result.error);
+    } catch(e) {
+      console.warn('getSharedSuppliers: UrlFetchApp failed — ' + e.message);
+    }
+  }
+
+  // ── Fallback: direct spreadsheet read (same-account) ──────
   if (!dbId) return {
     success: false,
-    error: 'SUPPLIER_DB_ID not configured. Set the DLSP supplier spreadsheet ID in Script Properties.'
+    error: 'DLSP Supplier Database not configured. Set SUPPLIER_DB_URL + SUPPLIER_API_KEY (or SUPPLIER_DB_ID) in Script Properties.'
   };
 
   try {
@@ -671,7 +702,7 @@ function getSharedSuppliers(token, query) {
 
     let rows = data.slice(1)
       .filter(r => {
-        if (!r[iName]) return false; // skip blank rows
+        if (!r[iName]) return false;
         const active = String(r[iActive] ?? '').toUpperCase().trim();
         return active !== 'FALSE' && active !== 'NO' && active !== '0';
       })
@@ -689,18 +720,18 @@ function getSharedSuppliers(token, query) {
       );
     }
 
-    // Return only the fields relevant for importing into the ordering app
     const suppliers = rows.map(s => ({
-      SupplierID:       s.SupplierID      || '',
-      CompanyName:      s.CompanyName     || '',
-      TradeName:        s.TradeName       || '',
-      Email:            s.SupplierEmail   || '',
-      ContactPerson:    s.ContactPerson   || '',
-      ContactNumber:    s.ContactNumber   || '',
-      Category:         s.Category        || '',
-      Address:          s.Address         || '',
-      City:             s.City            || '',
-      AccredStatus:     s.AccredStatus    || '',
+      SupplierID:       s.SupplierID       || '',
+      CompanyName:      s.CompanyName      || '',
+      TradeName:        s.TradeName        || '',
+      Email:            s.SupplierEmail    || '',
+      ContactPerson:    s.ContactPerson    || '',
+      ContactNumber:    s.ContactNumber    || '',
+      Category:         s.Category         || '',
+      SubCategory:      s.SubCategory      || '',
+      Address:          s.Address          || '',
+      City:             s.City             || '',
+      AccredStatus:     s.AccredStatus     || '',
       CentralVerified:  s.CentralVerified === true || s.CentralVerified === 'TRUE',
       RegisteredSchool: s.RegisteredSchool || '',
     }));
