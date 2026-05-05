@@ -410,6 +410,62 @@ function appendNamedRow(sheet, data) {
   sheet.appendRow(row);
 }
 
+/**
+ * Auto-repairs the Orders sheet column layout if ProofURL is missing from the header.
+ * Called automatically on first order placement after a broken patchSheetHeaders run.
+ * Safe to call repeatedly — exits immediately if header is already correct.
+ */
+function _ensureOrdersSheetRepaired() {
+  const EXPECTED = ['OrderID','CustomerEmail','CustomerName','StallID','StallName','Items',
+                    'Subtotal','ServiceFee','Total','PaymentMethod','PaymentRef','ProofURL',
+                    'PaymentStatus','Status','PickupCode','Notes','CreatedAt','UpdatedAt'];
+
+  const sheet   = getSheet(SHEETS.ORDERS);
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+
+  const hdr = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  // Already correct?
+  if (EXPECTED.every((h, i) => hdr[i] === h) && hdr.length === EXPECTED.length) return;
+
+  // ProofURL already present somewhere — just a column order issue; full repair needed
+  // Run the same logic as repairOrdersSheet but without token check
+  const allData = sheet.getDataRange().getValues();
+  if (allData.length <= 1) {
+    // No data rows — just rewrite the header
+    sheet.getRange(1, 1, 1, EXPECTED.length).setValues([EXPECTED]);
+    sheet.getRange(1, 1, 1, EXPECTED.length)
+      .setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold');
+    return;
+  }
+
+  const orderStatuses = new Set(Object.values(ORDER_STATUS));
+  const newData = [EXPECTED];
+
+  for (let r = 1; r < allData.length; r++) {
+    const row = allData[r];
+    if (!row[0]) continue;
+    const isNewFmt = String(row[13] || '') === ORDER_STATUS.PENDING;
+    if (isNewFmt) {
+      newData.push(EXPECTED.map((_, i) => (i < row.length ? row[i] : '')));
+    } else {
+      const newRow = EXPECTED.map((_, i) => {
+        if (i <= 10)  return row[i];
+        if (i === 11) return '';
+        return i - 1 < row.length ? row[i - 1] : '';
+      });
+      newData.push(newRow);
+    }
+  }
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, newData.length, EXPECTED.length).setValues(newData);
+  sheet.getRange(1, 1, 1, EXPECTED.length)
+    .setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold');
+
+  logAudit('system', 'UPDATE', 'Orders', '', 'Auto-repaired Orders sheet column layout');
+}
+
 function getSheet(name) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   let   sheet = ss.getSheetByName(name);

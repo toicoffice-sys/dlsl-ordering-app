@@ -22,6 +22,9 @@ function placeOrder(token, orderData) {
   if (!validMethods.includes(paymentMethod))
     return { success: false, error: 'Invalid payment method.' };
 
+  // Ensure Orders sheet has correct column layout (auto-repairs if ProofURL column is missing)
+  _ensureOrdersSheetRepaired();
+
   // Validate stall
   const concessionaires = getConcessionaires(true);
   const stall = concessionaires.find(c => String(c.StallID) === String(stallId));
