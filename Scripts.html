@@ -89,6 +89,12 @@ var App = (() => {
     if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
     return d.toLocaleDateString('en-PH', { month:'short', day:'numeric' });
   }
+  function fmtDateTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-PH', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
+  }
   function statusBadge(s) {
     const labels = { pending:'Pending', confirmed:'Confirmed', preparing:'Preparing',
                      ready:'Ready', completed:'Completed', cancelled:'Cancelled',
@@ -1147,7 +1153,6 @@ var App = (() => {
         <div class="order-header">
           <span class="order-stall">${o.StallName}</span>
           ${statusBadge(o.Status)}
-          <span class="order-time">${relTime(o.CreatedAt)}</span>
         </div>
         <div class="order-items-summary">${itemSummary}</div>
         <div class="order-footer" style="flex-wrap:wrap;gap:6px;">
@@ -1155,6 +1160,7 @@ var App = (() => {
           ${payBadge}
           <span class="order-total">${peso(o.Total)}</span>
         </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px;">🕐 ${fmtDateTime(o.CreatedAt)} <span style="opacity:.7;">(${relTime(o.CreatedAt)})</span></div>
       </div>`;
   }
 
@@ -1488,7 +1494,8 @@ var App = (() => {
         <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
           <div>
             <div style="font-weight:700;font-size:14px;">${o.CustomerName}</div>
-            <div style="font-size:12px;color:var(--text3);">${relTime(o.CreatedAt)} · <span style="font-family:monospace;">${o.OrderID}</span></div>
+            <div style="font-size:12px;color:var(--text3);">🕐 ${fmtDateTime(o.CreatedAt)} <span style="opacity:.7;">(${relTime(o.CreatedAt)})</span></div>
+            <div style="font-size:11px;color:var(--text3);font-family:monospace;">${o.OrderID}</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             ${statusBadge(o.Status)}
