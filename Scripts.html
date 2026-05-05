@@ -2425,6 +2425,10 @@ var App = (() => {
     return `
       <div class="card" style="margin-bottom:16px;">
         <div class="card-body">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+            <button class="btn btn-outline btn-sm no-print" onclick="_setReportPreset('${startId}','${endId}','week'); App.${generateFn}();">This Week</button>
+            <button class="btn btn-outline btn-sm no-print" onclick="_setReportPreset('${startId}','${endId}','month'); App.${generateFn}();">This Month</button>
+          </div>
           <div class="form-row">
             <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-control" id="${startId}" value="${startOfMonth}"></div>
             <div class="form-group"><label class="form-label">End Date</label><input type="date" class="form-control" id="${endId}" value="${today}"></div>
@@ -2437,6 +2441,23 @@ var App = (() => {
           </div>
         </div>
       </div>`;
+  }
+
+  function _setReportPreset(startId, endId, preset) {
+    const now   = new Date();
+    const today = now.toISOString().substring(0, 10);
+    let start;
+    if (preset === 'week') {
+      const day = now.getDay(); // 0=Sun,1=Mon,...
+      const diff = (day === 0) ? -6 : 1 - day; // Monday as week start
+      const mon = new Date(now);
+      mon.setDate(now.getDate() + diff);
+      start = mon.toISOString().substring(0, 10);
+    } else { // month
+      start = today.substring(0, 7) + '-01';
+    }
+    document.getElementById(startId).value = start;
+    document.getElementById(endId).value   = today;
   }
 
   async function renderAdminReports() {
